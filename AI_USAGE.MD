@@ -12,6 +12,7 @@
 3. Implementing the asynchronous middleware pipeline with a recursive chain-of-responsibility pattern, and dual-backend rate limiting (Redis sliding-window sorted sets with transparent in-memory fallback).
 4. Refactoring container types from `list` to `set` across models (`RouteDefinition`, `BackendInstance`, `GatewayContext`, `AuthMiddlewareConfig`, `TransformConfig`) to eliminate duplicate instances, prevent redundant probes, and ensure deterministic round-robin load balancing.
 5. Implementing automatic route configuration persistence and zero-downtime hot reloading, ensuring that runtime mutations (creation, update, status toggle, deletion) persist to disk and restore cleanly across process restarts.
+6. Implementing complex mock backend services (streaming file hashing with md5/sha1/sha256 calculation over streaming chunks, streaming NDJSON pipeline transformation, and stateful idempotent order processing) to verify true end-to-end ASGI proxy streaming without in-memory buffering.
 
 ## What I Had to Fix
 ![img.png](img.png)
