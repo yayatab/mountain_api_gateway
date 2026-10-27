@@ -8,9 +8,14 @@ from gateway.routing.matcher import RouteMatcher
 
 
 class RouteRegistry:
-    def __init__(self, routes: list[RouteDefinition] | None = None) -> None:
+    def __init__(
+        self,
+        routes: list[RouteDefinition] | None = None,
+        persistence_path: str | Path | None = None,
+    ) -> None:
         self._lock = asyncio.Lock()
         self._routes: dict[str, RouteDefinition] = {}
+        self.persistence_path: Path | None = Path(persistence_path) if persistence_path else None
         if routes:
             for route in routes:
                 self._routes[route.id] = route
@@ -19,10 +24,17 @@ class RouteRegistry:
     def _rebuild_matcher(self) -> None:
         self._matcher = RouteMatcher(list(self._routes.values()))
 
+    def _persist_unlocked(self) -> None:
+        if self.persistence_path:
+            self.persistence_path.parent.mkdir(parents=True, exist_ok=True)
+            data = [route.model_dump(mode="json") for route in self._routes.values()]
+            self.persistence_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
     async def register(self, route: RouteDefinition) -> None:
         async with self._lock:
             self._routes[route.id] = route
             self._rebuild_matcher()
+            self._persist_unlocked()
 
     async def update(self, route_id: str, route: RouteDefinition) -> None:
         async with self._lock:
@@ -31,17 +43,32 @@ class RouteRegistry:
             route.id = route_id
             self._routes[route_id] = route
             self._rebuild_matcher()
+            self._persist_unlocked()
 
     async def delete(self, route_id: str) -> bool:
         async with self._lock:
             if route_id in self._routes:
                 del self._routes[route_id]
                 self._rebuild_matcher()
+                self._persist_unlocked()
                 return True
             return False
 
+    async def set_status(self, route_id: str, enabled: bool) -> RouteDefinition | None:
+        async with self._lock:
+            route = self._routes.get(route_id)
+            if not route:
+                return None
+            route.enabled = enabled
+            self._rebuild_matcher()
+            self._persist_unlocked()
+            return route
+
     async def get(self, route_id: str) -> RouteDefinition | None:
         return self._routes.get(route_id)
+
+    async def exists(self, route_id: str) -> bool:
+        return route_id in self._routes
 
     async def list_all(self, include_disabled: bool = False) -> list[RouteDefinition]:
         if include_disabled:
@@ -62,6 +89,7 @@ class RouteRegistry:
     async def save_to_file(self, file_path: str | Path) -> None:
         async with self._lock:
             path = Path(file_path)
+            self.persistence_path = path
             path.parent.mkdir(parents=True, exist_ok=True)
             data = [route.model_dump(mode="json") for route in self._routes.values()]
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -69,6 +97,7 @@ class RouteRegistry:
     async def load_from_file(self, file_path: str | Path) -> None:
         async with self._lock:
             path = Path(file_path)
+            self.persistence_path = path
             if not path.exists():
                 return
             content = path.read_text(encoding="utf-8")

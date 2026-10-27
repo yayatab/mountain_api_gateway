@@ -1,3 +1,4 @@
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -6,6 +7,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
+from gateway.admin.routes import router as admin_router
 from gateway.config import settings
 from gateway.discovery.health_checker import HealthChecker
 from gateway.discovery.load_balancer import LoadBalancer, NoHealthyBackendException
@@ -15,7 +17,6 @@ from gateway.middleware.metrics import MetricsMiddleware, render_metrics_endpoin
 from gateway.middleware.rate_limit import RateLimitMiddleware
 from gateway.middleware.request_transform import RequestTransformMiddleware
 from gateway.middleware.response_transform import ResponseTransformMiddleware
-from gateway.models.backend import BackendStatus
 from gateway.models.context import GatewayContext
 from gateway.proxy.client import client_pool
 from gateway.proxy.engine import ProxyEngine
@@ -61,6 +62,10 @@ RESERVED_SYSTEM_PATHS = {
     "/api/guide",
     "/metrics",
     "/admin/backends",
+    "/admin/health",
+    "/admin/stats",
+    "/admin/routes",
+    "/admin/routes/reload",
     "/docs",
     "/docs/oauth2-redirect",
     "/redoc",
@@ -101,7 +106,9 @@ def create_app(
         openapi_url="/openapi.json",
     )
 
-    reg = registry or RouteRegistry()
+    app.state.start_time = time.perf_counter()
+
+    reg = registry or RouteRegistry(persistence_path=settings.routes_file_path)
     app.state.registry = reg
 
     lb = load_balancer or LoadBalancer()
@@ -122,6 +129,8 @@ def create_app(
         )
     app.state.pipeline = pipeline
 
+    app.include_router(admin_router)
+
     @app.get("/health", tags=["System"], summary="Gateway health check")
     async def health_check() -> dict[str, str]:
         """Health check endpoint indicating API Gateway status."""
@@ -131,18 +140,6 @@ def create_app(
     async def metrics_endpoint() -> Response:
         """Prometheus scrape endpoint."""
         return render_metrics_endpoint()
-
-    @app.get(
-        "/admin/backends",
-        tags=["Admin"],
-        summary="Backend inventory and health",
-        response_model=list[BackendStatus],
-    )
-    async def admin_backends() -> list[BackendStatus]:
-        """Returns inventory of backends with health, failures, and circuit states."""
-        lb_inst: LoadBalancer = app.state.load_balancer
-        reg_inst: RouteRegistry = app.state.registry
-        return await lb_inst.get_backends_status(reg_inst)
 
     @app.get(
         "/api/guide",
@@ -188,7 +185,7 @@ def create_app(
         normalized_path = "/" + full_path.lstrip("/")
 
         # Allow reserved system endpoints to execute their own route handlers
-        if normalized_path in RESERVED_SYSTEM_PATHS:
+        if normalized_path in RESERVED_SYSTEM_PATHS or normalized_path.startswith("/admin/routes/"):
             return Response(status_code=404)
 
         # Context initialization
