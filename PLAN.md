@@ -248,9 +248,14 @@ sequenceDiagram
 - `test_admin_api.py`: Route creation, listing, updating, deletion, hot-reloading.
 
 ### Phase 8: Containerization & Documentation
-- Multi-service `docker-compose.yml` (Gateway, Redis, Echo, Slow, Flaky).
+- Multi-service `docker-compose.yml` (Gateway, Redis, Echo, Slow, Flaky, Hasher, Pipeline).
 - Optimized production `Dockerfile`.
 - Complete, interview-ready `DECISIONS.md`, `README.md`, and `AI_USAGE.md`.
+
+### Phase 9: Manual Testing Playbook & Automated Demonstration Harness
+- `tests/MANUAL_TESTING.md`: Comprehensive step-by-step interactive manual testing playbook.
+- `scripts/run_manual_tests.sh`: Automated live execution script testing all scenarios.
+- `scripts/generate_tokens.py`: Developer CLI tool to mint test JWT tokens on demand.
 
 ---
 

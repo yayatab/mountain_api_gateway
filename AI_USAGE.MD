@@ -14,6 +14,8 @@
 5. Implementing automatic route configuration persistence and zero-downtime hot reloading, ensuring that runtime mutations (creation, update, status toggle, deletion) persist to disk and restore cleanly across process restarts.
 6. Implementing complex mock backend services (streaming file hashing with md5/sha1/sha256 calculation over streaming chunks, streaming NDJSON pipeline transformation, and stateful idempotent order processing) to verify true end-to-end ASGI proxy streaming without in-memory buffering.
 7. Raising test coverage to 98% across all gateway subsystems, verifying edge cases including Redis connection failure fallbacks, HTTP connection pool initialization and shutdown lifecycles, health checker background worker cancellation, and route matcher string normalizations.
+8. Structuring a multi-stage Docker build with uv and a non-root user, plus Docker Compose orchestration across 7 services (gateway, redis, and 5 backends) with health check dependencies and seed route persistence.
+9. Formulating a comprehensive manual testing playbook (`tests/MANUAL_TESTING.md`), automated live verification script (`scripts/run_manual_tests.sh`), and JWT token generator CLI (`scripts/generate_tokens.py`).
 
 ## What I Had to Fix
 ![img.png](img.png)
@@ -32,3 +34,4 @@ Using
 - type system. the AI did not realize when somethin can/should be nullable. and whether a container should be a set
 - ASGI in-memory half-duplex deadlock when streaming request and response bodies concurrently over `httpx.ASGITransport` without pre-buffering chunk iterations.
 - Identifying correct fixture route paths across large integration test suites (e.g. distinguishing between `/admin/dashboard` application route and `/admin/routes` management API).
+- Initial validation error on seed `routes.json` due to case sensitivity mismatch between string `"HEALTHY"` and `HealthStatus` StrEnum values (`"healthy"`), caught and corrected during container route persistence verification.
