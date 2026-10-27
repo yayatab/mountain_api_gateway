@@ -87,18 +87,18 @@ class AuthMiddleware(BaseMiddleware):
 
         roles_claim = payload.get("roles") or payload.get("role") or []
         if isinstance(roles_claim, str):
-            user_roles = [roles_claim]
-        elif isinstance(roles_claim, list):
-            user_roles = [str(r) for r in roles_claim]
+            user_roles = {roles_claim}
+        elif isinstance(roles_claim, (list, set)):
+            user_roles = {str(r) for r in roles_claim}
         else:
-            user_roles = []
+            user_roles = set()
         context.user_roles = user_roles
 
         # Extract scopes
         scopes_claim = payload.get("scopes") or payload.get("scope") or []
         if isinstance(scopes_claim, str):
             token_scopes = set(scopes_claim.replace(",", " ").split())
-        elif isinstance(scopes_claim, list):
+        elif isinstance(scopes_claim, (list, set)):
             token_scopes = {str(s) for s in scopes_claim}
         else:
             token_scopes = set()
@@ -107,7 +107,7 @@ class AuthMiddleware(BaseMiddleware):
 
         # Role-based access control (RBAC)
         if auth_config.allowed_roles:
-            has_role = any(r in auth_config.allowed_roles for r in user_roles)
+            has_role = bool(auth_config.allowed_roles & context.user_roles)
             if not has_role:
                 return JSONResponse(
                     status_code=403,
@@ -122,7 +122,7 @@ class AuthMiddleware(BaseMiddleware):
 
         # Scope-based access control
         if auth_config.required_scopes:
-            has_scopes = set(auth_config.required_scopes).issubset(token_scopes)
+            has_scopes = auth_config.required_scopes.issubset(token_scopes)
             if not has_scopes:
                 return JSONResponse(
                     status_code=403,
@@ -140,7 +140,8 @@ class AuthMiddleware(BaseMiddleware):
         if context.user_id:
             scope_headers.append((b"x-user-id", context.user_id.encode("utf-8")))
         if context.user_roles:
-            scope_headers.append((b"x-user-roles", ",".join(context.user_roles).encode("utf-8")))
+            sorted_roles = ",".join(sorted(context.user_roles))
+            scope_headers.append((b"x-user-roles", sorted_roles.encode("utf-8")))
         request.scope["headers"] = scope_headers
 
         return await call_next(request, context)

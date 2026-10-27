@@ -41,7 +41,7 @@ def prepare_upstream_headers(
     request_id: str,
     scheme: str = "http",
     user_id: str | None = None,
-    user_roles: list[str] | None = None,
+    user_roles: set[str] | None = None,
 ) -> dict[str, str]:
     """Clean hop-by-hop headers and inject proxy tracing headers for upstream request."""
     parsed_target = urlparse(target_url)
@@ -91,7 +91,7 @@ def prepare_upstream_headers(
     if user_id:
         upstream_headers["X-User-Id"] = user_id
     if user_roles:
-        upstream_headers["X-User-Roles"] = ",".join(user_roles)
+        upstream_headers["X-User-Roles"] = ",".join(sorted(user_roles))
 
     return upstream_headers
 

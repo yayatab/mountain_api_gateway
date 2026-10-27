@@ -3,14 +3,16 @@ from http import HTTPMethod
 
 from pydantic import BaseModel, Field
 
+from gateway.models.backend import BackendInstance
+
 HttpMethod = HTTPMethod
 
 
 class AuthMiddlewareConfig(BaseModel):
     enabled: bool = False
     required: bool = True
-    allowed_roles: list[str] = Field(default_factory=list)
-    required_scopes: list[str] = Field(default_factory=list)
+    allowed_roles: set[str] = Field(default_factory=set)
+    required_scopes: set[str] = Field(default_factory=set)
 
 
 class RateLimitConfig(BaseModel):
@@ -24,7 +26,7 @@ class TransformConfig(BaseModel):
     strip_prefix: str | None = None
     add_prefix: str | None = None
     add_request_headers: dict[str, str] = Field(default_factory=dict)
-    remove_request_headers: list[str] = Field(default_factory=list)
+    remove_request_headers: set[str] = Field(default_factory=set)
     add_response_headers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -38,8 +40,9 @@ class RouteDefinition(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     path_pattern: str
-    methods: set[HTTPMethod] | list[HTTPMethod] = Field(default_factory=set)
-    upstream_url: str
+    methods: set[HTTPMethod] = Field(default_factory=set)
+    upstream_url: str = ""
+    upstream_pool: set[BackendInstance] = Field(default_factory=set)
     strip_prefix: str | None = None
     add_prefix: str | None = None
     priority: int = 0

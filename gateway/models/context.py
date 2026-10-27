@@ -13,6 +13,6 @@ class GatewayContext(BaseModel):
     start_time: float = Field(default_factory=time.perf_counter)
     matched_route: RouteDefinition | None = None
     user_id: str | None = None
-    user_roles: list[str] = Field(default_factory=list)
+    user_roles: set[str] = Field(default_factory=set)
     auth_claims: dict[str, Any] = Field(default_factory=dict)
     state: dict[str, Any] = Field(default_factory=dict)

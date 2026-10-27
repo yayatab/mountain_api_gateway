@@ -21,20 +21,20 @@ def proxy_registry() -> RouteRegistry:
             id="echo-route",
             name="Echo Service",
             path_pattern="/api/v1/echo",
-            methods=[
+            methods={
                 HttpMethod.GET,
                 HttpMethod.POST,
                 HttpMethod.PUT,
                 HttpMethod.DELETE,
                 HttpMethod.PATCH,
-            ],
+            },
             upstream_url="http://echo-service",
         ),
         RouteDefinition(
             id="prefix-rewrite-route",
             name="Prefix Rewrite",
             path_pattern="/legacy/api/**",
-            methods=[HttpMethod.GET, HttpMethod.POST],
+            methods={HttpMethod.GET, HttpMethod.POST},
             upstream_url="http://echo-service/upstream",
             strip_prefix="/legacy",
             add_prefix="/modern",

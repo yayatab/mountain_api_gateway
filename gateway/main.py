@@ -2,11 +2,14 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from gateway.config import settings
+from gateway.discovery.health_checker import HealthChecker
+from gateway.discovery.load_balancer import LoadBalancer, NoHealthyBackendException
 from gateway.middleware.auth import AuthMiddleware
 from gateway.middleware.base import MiddlewarePipeline
 from gateway.middleware.metrics import MetricsMiddleware, render_metrics_endpoint
@@ -57,6 +60,7 @@ RESERVED_SYSTEM_PATHS = {
     "/health",
     "/api/guide",
     "/metrics",
+    "/admin/backends",
     "/docs",
     "/docs/oauth2-redirect",
     "/redoc",
@@ -71,8 +75,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Load routes from file if configured
     if settings.routes_file_path:
         await app.state.registry.load_from_file(settings.routes_file_path)
+    if hasattr(app.state, "health_checker"):
+        app.state.health_checker.start()
     yield
-    # Shutdown: cleanly close HTTP connections
+    # Shutdown: cleanly close HTTP connections & health checker
+    if hasattr(app.state, "health_checker"):
+        await app.state.health_checker.stop()
     await client_pool.shutdown()
 
 
@@ -80,6 +88,8 @@ def create_app(
     registry: RouteRegistry | None = None,
     proxy_engine: ProxyEngine | None = None,
     pipeline: MiddlewarePipeline | None = None,
+    load_balancer: LoadBalancer | None = None,
+    health_checker: HealthChecker | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Mountain API Gateway",
@@ -91,8 +101,14 @@ def create_app(
         openapi_url="/openapi.json",
     )
 
-    app.state.registry = registry or RouteRegistry()
-    app.state.proxy_engine = proxy_engine or ProxyEngine()
+    reg = registry or RouteRegistry()
+    app.state.registry = reg
+
+    lb = load_balancer or LoadBalancer()
+    app.state.load_balancer = lb
+
+    app.state.health_checker = health_checker or HealthChecker(registry=reg)
+    app.state.proxy_engine = proxy_engine or ProxyEngine(on_result=lb.record_result)
 
     if pipeline is None:
         pipeline = MiddlewarePipeline(
@@ -115,6 +131,13 @@ def create_app(
     async def metrics_endpoint() -> Response:
         """Prometheus scrape endpoint."""
         return render_metrics_endpoint()
+
+    @app.get("/admin/backends", tags=["Admin"], summary="Backend inventory and health")
+    async def admin_backends() -> list[dict[str, Any]]:
+        """Returns inventory of backends with health, failures, and circuit states."""
+        lb_inst: LoadBalancer = app.state.load_balancer
+        reg_inst: RouteRegistry = app.state.registry
+        return await lb_inst.get_backends_status(reg_inst)
 
     @app.get(
         "/api/guide",
@@ -206,12 +229,29 @@ def create_app(
         context.matched_route = match_result.route
         engine: ProxyEngine = app.state.proxy_engine
         current_pipeline: MiddlewarePipeline = app.state.pipeline
+        lb_inst: LoadBalancer = app.state.load_balancer
+
+        try:
+            selected_target_url = lb_inst.select_backend(match_result.route)
+        except NoHealthyBackendException:
+            return JSONResponse(
+                status_code=503,
+                headers={"X-Request-ID": context.request_id},
+                content={
+                    "error": "service_unavailable",
+                    "message": (
+                        f"No healthy upstream backends for route '{match_result.route.id}'"
+                    ),
+                    "request_id": context.request_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
 
         async def terminal_proxy(req: Request, ctx: GatewayContext) -> Response:
             return await engine.forward(
                 request=req,
                 context=ctx,
-                target_base_url=match_result.route.upstream_url,
+                target_base_url=selected_target_url,
                 target_path=match_result.target_path,
                 timeout_seconds=match_result.route.timeout_seconds,
             )

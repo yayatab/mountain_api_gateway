@@ -38,7 +38,7 @@ def auth_routes() -> list[RouteDefinition]:
             id="required-auth-route",
             name="Required Auth",
             path_pattern="/secure/data",
-            methods=[HTTPMethod.GET],
+            methods={HTTPMethod.GET},
             upstream_url="http://echo-service",
             middleware=MiddlewareConfig(
                 auth=AuthMiddlewareConfig(
@@ -51,7 +51,7 @@ def auth_routes() -> list[RouteDefinition]:
             id="optional-auth-route",
             name="Optional Auth",
             path_pattern="/public/data",
-            methods=[HTTPMethod.GET],
+            methods={HTTPMethod.GET},
             upstream_url="http://echo-service",
             middleware=MiddlewareConfig(
                 auth=AuthMiddlewareConfig(
@@ -64,13 +64,13 @@ def auth_routes() -> list[RouteDefinition]:
             id="rbac-route",
             name="Admin Only",
             path_pattern="/admin/dashboard",
-            methods=[HTTPMethod.GET],
+            methods={HTTPMethod.GET},
             upstream_url="http://echo-service",
             middleware=MiddlewareConfig(
                 auth=AuthMiddlewareConfig(
                     enabled=True,
                     required=True,
-                    allowed_roles=["admin", "superadmin"],
+                    allowed_roles={"admin", "superadmin"},
                 )
             ),
         ),
@@ -78,13 +78,13 @@ def auth_routes() -> list[RouteDefinition]:
             id="scope-route",
             name="Reports Scope Only",
             path_pattern="/reports/export",
-            methods=[HTTPMethod.GET],
+            methods={HTTPMethod.GET},
             upstream_url="http://echo-service",
             middleware=MiddlewareConfig(
                 auth=AuthMiddlewareConfig(
                     enabled=True,
                     required=True,
-                    required_scopes=["read:reports", "export:data"],
+                    required_scopes={"read:reports", "export:data"},
                 )
             ),
         ),
@@ -118,7 +118,7 @@ async def test_valid_jwt_authenticates_and_injects_upstream_headers(
     assert resp.status_code == 200
     data = resp.json()
     assert data["headers"]["x-user-id"] == "user_42"
-    assert data["headers"]["x-user-roles"] == "user,analyst"
+    assert set(data["headers"]["x-user-roles"].split(",")) == {"user", "analyst"}
 
 
 @pytest.mark.asyncio

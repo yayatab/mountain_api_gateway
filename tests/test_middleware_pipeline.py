@@ -22,7 +22,7 @@ def pipeline_registry() -> RouteRegistry:
                 id="transform-route",
                 name="Transform Service",
                 path_pattern="/api/transforms",
-                methods=[HTTPMethod.GET, HTTPMethod.POST],
+                methods={HTTPMethod.GET, HTTPMethod.POST},
                 upstream_url="http://echo-service",
                 middleware=MiddlewareConfig(
                     rate_limit=RateLimitConfig(
@@ -31,7 +31,7 @@ def pipeline_registry() -> RouteRegistry:
                     ),
                     transform=TransformConfig(
                         add_request_headers={"x-gateway-injected": "true", "x-env": "prod"},
-                        remove_request_headers=["x-sensitive-client-token"],
+                        remove_request_headers={"x-sensitive-client-token"},
                         add_response_headers={
                             "x-custom-gateway-version": "1.0.0",
                             "access-control-allow-origin": "*",

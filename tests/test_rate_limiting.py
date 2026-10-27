@@ -37,7 +37,7 @@ def rate_limit_registry() -> RouteRegistry:
                 id="ip-limited-route",
                 name="IP Limited",
                 path_pattern="/limited/ip",
-                methods=[HTTPMethod.GET],
+                methods={HTTPMethod.GET},
                 upstream_url="http://echo-service",
                 middleware=MiddlewareConfig(
                     rate_limit=RateLimitConfig(
@@ -51,7 +51,7 @@ def rate_limit_registry() -> RouteRegistry:
                 id="user-limited-route",
                 name="User Limited",
                 path_pattern="/limited/user",
-                methods=[HTTPMethod.GET],
+                methods={HTTPMethod.GET},
                 upstream_url="http://echo-service",
                 middleware=MiddlewareConfig(
                     auth=AuthMiddlewareConfig(
@@ -69,7 +69,7 @@ def rate_limit_registry() -> RouteRegistry:
                 id="apikey-limited-route",
                 name="API Key Limited",
                 path_pattern="/limited/key",
-                methods=[HTTPMethod.GET],
+                methods={HTTPMethod.GET},
                 upstream_url="http://echo-service",
                 middleware=MiddlewareConfig(
                     rate_limit=RateLimitConfig(

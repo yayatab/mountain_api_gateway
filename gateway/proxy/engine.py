@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import UTC, datetime
 from urllib.parse import urljoin, urlparse
 
@@ -15,8 +16,13 @@ from gateway.proxy.headers import (
 
 
 class ProxyEngine:
-    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        on_result: Callable[[str, bool], None] | None = None,
+    ) -> None:
         self._custom_client = client
+        self._on_result = on_result
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._custom_client is not None:
@@ -82,7 +88,11 @@ class ProxyEngine:
                 timeout=httpx.Timeout(timeout_seconds),
             )
             upstream_resp = await client.send(upstream_req, stream=True)
+            if self._on_result:
+                self._on_result(target_base_url, upstream_resp.status_code < 500)
         except httpx.TimeoutException:
+            if self._on_result:
+                self._on_result(target_base_url, False)
             return JSONResponse(
                 status_code=504,
                 content={
@@ -93,6 +103,8 @@ class ProxyEngine:
                 },
             )
         except (httpx.ConnectError, httpx.NetworkError):
+            if self._on_result:
+                self._on_result(target_base_url, False)
             return JSONResponse(
                 status_code=502,
                 content={
