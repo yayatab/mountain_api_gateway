@@ -1,0 +1,36 @@
+name: "HTTP Method Not Allowed"
+description: "Verifies 405 Method Not Allowed and presence of RFC-compliant Allow response header."
+
+services:
+  echo-service: up
+
+route:
+  id: "readonly-route"
+  name: "Read-Only Route"
+  path_pattern: "/readonly/**"
+  methods: ["GET"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/readonly"
+
+config:
+  methods: ["GET"]
+
+curl_commands:
+  - name: "Permitted GET request (200 OK)"
+    curl: 'curl -i http://localhost:8000/readonly/items'
+    expected_response:
+      status_code: 200
+
+  - name: "Disallowed POST request (405 Method Not Allowed)"
+    curl: 'curl -i -X POST http://localhost:8000/readonly/items --data "name=sample"'
+    expected_response:
+      status_code: 405
+      body_contains: "method_not_allowed"
+      headers:
+        allow: "GET"
+
+  - name: "Disallowed DELETE request (405 Method Not Allowed)"
+    curl: 'curl -i -X DELETE http://localhost:8000/readonly/items'
+    expected_response:
+      status_code: 405
+      body_contains: "method_not_allowed"

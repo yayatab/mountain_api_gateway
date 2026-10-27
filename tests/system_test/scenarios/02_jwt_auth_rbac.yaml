@@ -1,0 +1,53 @@
+name: "JWT Authentication and Role-Based Access Control"
+description: "Verifies authorization enforcement, role verification, and token expiration rejection."
+
+services:
+  echo-service: up
+
+route:
+  id: "secure-admin-route"
+  name: "Secure Admin Route"
+  path_pattern: "/secure/**"
+  methods: ["GET", "POST"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/secure"
+  priority: 20
+
+config:
+  middleware:
+    auth:
+      enabled: true
+      required: true
+      allowed_roles: ["admin", "superadmin"]
+
+curl_commands:
+  - name: "Missing Authorization header"
+    curl: 'curl -i http://localhost:8000/secure/dashboard'
+    expected_response:
+      status_code: 401
+      body_contains: "unauthorized"
+
+  - name: "Viewer role rejected (403 Forbidden)"
+    curl: 'curl -i -H "Authorization: Bearer {{VIEWER_TOKEN}}" http://localhost:8000/secure/dashboard'
+    expected_response:
+      status_code: 403
+      body_contains: "required role"
+
+  - name: "Admin role accepted (200 OK)"
+    curl: 'curl -i -H "Authorization: Bearer {{ADMIN_TOKEN}}" http://localhost:8000/secure/dashboard'
+    expected_response:
+      status_code: 200
+      json:
+        path: "/dashboard"
+
+  - name: "Expired token rejected (401 Unauthorized)"
+    curl: 'curl -i -H "Authorization: Bearer {{EXPIRED_TOKEN}}" http://localhost:8000/secure/dashboard'
+    expected_response:
+      status_code: 401
+      body_contains: "token_expired"
+
+  - name: "Invalid signature rejected (401 Unauthorized)"
+    curl: 'curl -i -H "Authorization: Bearer {{INVALID_TOKEN}}" http://localhost:8000/secure/dashboard'
+    expected_response:
+      status_code: 401
+      body_contains: "invalid_token"

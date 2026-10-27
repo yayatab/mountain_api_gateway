@@ -13,6 +13,7 @@ dependencies = [
     "pyjwt[crypto]>=2.8.0",
     "redis>=5.0.0",
     "prometheus-client>=0.20.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -55,3 +56,6 @@ reportMissingTypeStubs = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "system_test: Mark test as end-to-end system test driven by YAML scenario specifications",
+]

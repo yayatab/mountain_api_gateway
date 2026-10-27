@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-121%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-131%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checked](https://img.shields.io/badge/type%20checker-pyright-blue.svg)](https://github.com/microsoft/pyright)
@@ -118,7 +118,7 @@ GATEWAY_ROUTES_FILE_PATH=config/routes.json uv run uvicorn gateway.main:app --po
 Mountain API Gateway maintains an exhaustive test suite with **98% code coverage**, strict type checking, and zero lint warnings:
 
 ```bash
-# Run 121 unit and integration tests with coverage report
+# Run 131 unit, integration, and system tests with coverage report
 uv run pytest --cov=gateway --cov=mock_backend_services --cov-report=term-missing
 
 # Run code style & formatting checks
@@ -127,6 +127,125 @@ uv run ruff format --check .
 
 # Run static type checking with pyright
 uv run pyright
+```
+
+### YAML-Driven System Tests
+Mountain API Gateway includes a declarative system test framework driven by YAML scenario files in [`tests/system_test/scenarios/`](file:///Users/yairtaboch/PycharmProjects/mountain_api_gateway/tests/system_test/scenarios/):
+
+```bash
+# Run all YAML system test scenarios
+uv run pytest -m system_test
+
+# Or run tests/test_system.py directly
+uv run pytest tests/test_system.py
+
+# Run a specific YAML scenario file via CLI runner
+uv run python -m tests.system_test.runner tests/system_test/scenarios/01_routing_and_reflection.yaml
+
+# Run a custom scenario file via pytest
+SYSTEM_TEST_YAML=path/to/scenario.yaml uv run pytest tests/test_system.py
+```
+
+#### Adding New System Tests
+
+Adding a new system test requires zero Python code. Simply drop a new `.yaml` file into [`tests/system_test/scenarios/`](file:///Users/yairtaboch/PycharmProjects/mountain_api_gateway/tests/system_test/scenarios/) (e.g. `11_my_feature.yaml`), and `pytest` will automatically discover and run it as an independent test case.
+
+##### YAML Specification Schema
+
+Each test scenario YAML file defines 5 core sections:
+
+```yaml
+# 1. Test Metadata
+name: "Feature Name & Description"
+description: "Optional notes on what this scenario verifies"
+
+# 2. Upstream Backend Service Status (up / down)
+# Available services: echo-service, slow-service, flaky-service, hasher-service, pipeline-service
+services:
+  echo-service: up
+  slow-service: down
+
+# 3. Target Route Configuration
+route:
+  id: "custom-route-id"
+  path_pattern: "/my-feature/**"
+  methods: ["GET", "POST"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/my-feature"
+  priority: 10
+  timeout_seconds: 5.0
+
+# 4. Configuration & Middleware to Activate / Disable
+config:
+  middleware:
+    auth:
+      enabled: true
+      required: true
+      allowed_roles: ["admin"]
+    rate_limit:
+      enabled: true
+      requests_per_minute: 10
+      key_by: "ip"
+    transform:
+      add_request_headers:
+        X-Gateway-Origin: "mountain"
+
+# 5. Ordered curl Commands & Expected Responses
+curl_commands:
+  - name: "Step 1: Test unauthorized rejection"
+    curl: 'curl -i http://localhost:8000/my-feature/data'
+    expected_response:
+      status_code: 401
+      body_contains: "unauthorized"
+
+  - name: "Step 2: Test authorized access with injected admin token"
+    curl: 'curl -i -H "Authorization: Bearer {{ADMIN_TOKEN}}" http://localhost:8000/my-feature/data'
+    expected_response:
+      status_code: 200
+      json:
+        path: "/data"
+
+  - name: "Step 3: Simulate backend failure in-flight"
+    service_action:
+      echo-service: down
+
+  - name: "Step 4: Verify 502 Bad Gateway when backend is down"
+    curl: 'curl -i -H "Authorization: Bearer {{ADMIN_TOKEN}}" http://localhost:8000/my-feature/data'
+    expected_response:
+      status_code: 502
+      body_contains: "bad_gateway"
+```
+
+##### Supported Assertion Fields in `expected_response`
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `status_code` | `int` | Exact HTTP status code expected (e.g. `200`, `401`, `403`, `405`, `429`, `502`, `504`) |
+| `headers` | `dict` | Key-value pairs to check in response headers (`*` checks presence; case-insensitive) |
+| `body_contains` | `str` or `list` | Substring(s) that must appear in the response body |
+| `body_not_contains` | `str` or `list` | Substring(s) that must NOT appear in the response body |
+| `json` | `dict` or `list` | Expected JSON structure (supports partial/subset matching of nested keys) |
+| `regex` | `str` | Regular expression pattern the response body must match |
+
+##### Dynamic Placeholders in `curl` Commands
+
+You can use template placeholders directly within `curl` strings:
+- `{{ADMIN_TOKEN}}`: Auto-minted valid JWT with `sub: admin_user`, `roles: ["admin"]`.
+- `{{VIEWER_TOKEN}}`: Auto-minted JWT with `sub: viewer_user`, `roles: ["viewer"]`.
+- `{{EXPIRED_TOKEN}}`: Expired JWT (issued with negative expiration).
+- `{{SUPERADMIN_TOKEN}}`: Valid JWT with `roles: ["superadmin", "admin"]`.
+- `{{INVALID_TOKEN}}`: Malformed token with invalid signature.
+- `{{UUID}}`: Dynamically generated UUIDv4.
+- `{{TIMESTAMP}}`: Current Unix epoch integer timestamp.
+
+##### Running Your New Test
+
+```bash
+# Run your specific test by scenario name pattern
+uv run pytest -k "my_feature"
+
+# Or run it with the standalone runner
+uv run python -m tests.system_test.runner tests/system_test/scenarios/11_my_feature.yaml
 ```
 
 ### Manual Testing Playbook & Automated Live Runner

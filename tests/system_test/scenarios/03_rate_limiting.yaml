@@ -1,0 +1,44 @@
+name: "Sliding-Window Rate Limiting Quota"
+description: "Verifies sliding-window burst capacity and 429 Too Many Requests response."
+
+services:
+  echo-service: up
+
+route:
+  id: "rate-limited-test-route"
+  name: "Rate Limited Route"
+  path_pattern: "/limited/**"
+  methods: ["GET"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/limited"
+
+config:
+  middleware:
+    rate_limit:
+      enabled: true
+      requests_per_minute: 3
+      key_by: "ip"
+
+curl_commands:
+  - name: "Request 1 - within quota"
+    curl: 'curl -i http://localhost:8000/limited/resource'
+    expected_response:
+      status_code: 200
+
+  - name: "Request 2 - within quota"
+    curl: 'curl -i http://localhost:8000/limited/resource'
+    expected_response:
+      status_code: 200
+
+  - name: "Request 3 - within quota"
+    curl: 'curl -i http://localhost:8000/limited/resource'
+    expected_response:
+      status_code: 200
+
+  - name: "Request 4 - quota exceeded"
+    curl: 'curl -i http://localhost:8000/limited/resource'
+    expected_response:
+      status_code: 429
+      body_contains: "rate_limit_exceeded"
+      headers:
+        retry-after: "*"

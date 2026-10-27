@@ -16,6 +16,7 @@
 7. Raising test coverage to 98% across all gateway subsystems, verifying edge cases including Redis connection failure fallbacks, HTTP connection pool initialization and shutdown lifecycles, health checker background worker cancellation, and route matcher string normalizations.
 8. Structuring a multi-stage Docker build with uv and a non-root user, plus Docker Compose orchestration across 7 services (gateway, redis, and 5 backends) with health check dependencies and seed route persistence.
 9. Formulating a comprehensive manual testing playbook (`tests/MANUAL_TESTING.md`), automated live verification script (`scripts/run_manual_tests.sh`), and JWT token generator CLI (`scripts/generate_tokens.py`).
+10. Implementing a declarative, YAML-driven system test harness (`tests/test_system.py`, `tests/system_test/runner.py`) that parses curl commands, dynamically controls upstream service UP/DOWN states, loads route and middleware configurations, and executes end-to-end scenarios under pytest.
 
 ## What I Had to Fix
 ![img.png](img.png)

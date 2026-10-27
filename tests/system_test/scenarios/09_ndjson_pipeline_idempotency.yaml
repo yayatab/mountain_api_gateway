@@ -1,0 +1,33 @@
+name: "Streaming NDJSON Pipeline and Idempotent Orders"
+description: "Verifies Idempotency-Key deduplication returning cached order with is_duplicate: true."
+
+services:
+  pipeline-service: up
+
+route:
+  id: "pipeline-test-route"
+  name: "Pipeline Route"
+  path_pattern: "/pipeline/**"
+  methods: ["POST", "GET"]
+  upstream_url: "http://pipeline-service:8005"
+  strip_prefix: "/pipeline"
+
+config:
+  methods: ["POST", "GET"]
+
+curl_commands:
+  - name: "First request creates new order (201 Created, is_duplicate: false)"
+    curl: 'curl -i -X POST http://localhost:8000/pipeline/pipeline/orders -H "Content-Type: application/json" -H "Idempotency-Key: fixed-yaml-idem-key" --data "{\"order_id\": \"ORD-YAML-1\", \"amount\": 150.0}"'
+    expected_response:
+      status_code: 201
+      json:
+        is_duplicate: false
+        status: "processed"
+
+  - name: "Second request with identical key returns cached order (200 OK, is_duplicate: true)"
+    curl: 'curl -i -X POST http://localhost:8000/pipeline/pipeline/orders -H "Content-Type: application/json" -H "Idempotency-Key: fixed-yaml-idem-key" --data "{\"order_id\": \"ORD-YAML-1\", \"amount\": 150.0}"'
+    expected_response:
+      status_code: 200
+      json:
+        is_duplicate: true
+        status: "processed"

@@ -1,0 +1,34 @@
+name: "Service Down Connection Resilience"
+description: "Verifies upstream network refusal produces 502 and dynamic recovery restores 200."
+
+services:
+  echo-service: down
+
+route:
+  id: "resilient-echo-route"
+  name: "Resilience Test Route"
+  path_pattern: "/service-check/**"
+  methods: ["GET"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/service-check"
+
+config:
+  methods: ["GET"]
+
+curl_commands:
+  - name: "Request while service is DOWN (502 Bad Gateway)"
+    curl: 'curl -i http://localhost:8000/service-check/ping'
+    expected_response:
+      status_code: 502
+      body_contains: "bad_gateway"
+
+  - name: "Restore service status to UP"
+    service_action:
+      echo-service: up
+
+  - name: "Request after service is restored (200 OK)"
+    curl: 'curl -i http://localhost:8000/service-check/ping'
+    expected_response:
+      status_code: 200
+      json:
+        path: "/ping"

@@ -1,0 +1,45 @@
+name: "Circuit Breaker Trip and Fast-Fail"
+description: "Verifies circuit breaker trips to OPEN after 3 consecutive failures, fast-failing with 503."
+
+services:
+  flaky-service: up
+
+route:
+  id: "flaky-breaker-route"
+  name: "Flaky Breaker Route"
+  path_pattern: "/flaky/**"
+  methods: ["GET"]
+  upstream_pool:
+    - url: "http://flaky-service:8003"
+      status: "healthy"
+  strip_prefix: "/flaky"
+
+config:
+  methods: ["GET"]
+
+curl_commands:
+  - name: "Successful initial request (200 OK)"
+    curl: 'curl -i "http://localhost:8000/flaky/health?unhealthy=false"'
+    expected_response:
+      status_code: 200
+
+  - name: "Failure 1 of 3 (500 from upstream)"
+    curl: 'curl -i "http://localhost:8000/flaky/error?fail_rate=1.0"'
+    expected_response:
+      status_code: 500
+
+  - name: "Failure 2 of 3 (500 from upstream)"
+    curl: 'curl -i "http://localhost:8000/flaky/error?fail_rate=1.0"'
+    expected_response:
+      status_code: 500
+
+  - name: "Failure 3 of 3 (Trips Circuit Breaker to OPEN)"
+    curl: 'curl -i "http://localhost:8000/flaky/error?fail_rate=1.0"'
+    expected_response:
+      status_code: 500
+
+  - name: "Fast-fail while breaker is OPEN (503 Service Unavailable without calling backend)"
+    curl: 'curl -i "http://localhost:8000/flaky/error?fail_rate=1.0"'
+    expected_response:
+      status_code: 503
+      body_contains: "service_unavailable"

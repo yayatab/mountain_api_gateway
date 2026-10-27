@@ -1,0 +1,26 @@
+name: "ASGI Chunked Streaming Hasher"
+description: "Verifies zero-buffering chunk streaming payload upload and cryptographic checksum generation."
+
+services:
+  hasher-service: up
+
+route:
+  id: "streaming-hasher-route"
+  name: "Hasher Route"
+  path_pattern: "/hasher/**"
+  methods: ["POST", "GET"]
+  upstream_url: "http://hasher-service:8004"
+  strip_prefix: "/hasher"
+
+config:
+  methods: ["POST", "GET"]
+
+curl_commands:
+  - name: "Stream file payload and verify real-time hashing"
+    curl: 'curl -i -X POST http://localhost:8000/hasher/hash --data-binary "Mountain API Gateway Streaming Test Payload"'
+    expected_response:
+      status_code: 200
+      json:
+        total_bytes: 43
+        chunk_count: 1
+        md5: "6d01870e05f52b76fae1bf9a647649a7"

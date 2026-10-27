@@ -1,0 +1,31 @@
+name: "Upstream Route Timeout Enforcement"
+description: "Verifies 504 Gateway Timeout when upstream backend delay exceeds configured route timeout."
+
+services:
+  slow-service: up
+
+route:
+  id: "timeout-test-route"
+  name: "Slow Service Timeout Route"
+  path_pattern: "/slow/**"
+  methods: ["GET"]
+  upstream_url: "http://slow-service:8002"
+  strip_prefix: "/slow"
+  timeout_seconds: 0.5
+
+config:
+  methods: ["GET"]
+
+curl_commands:
+  - name: "Fast request under timeout threshold (200 OK)"
+    curl: 'curl -i "http://localhost:8000/slow/compute?delay=0.01"'
+    expected_response:
+      status_code: 200
+      json:
+        status: "completed"
+
+  - name: "Slow request exceeding 0.5s timeout threshold (504 Gateway Timeout)"
+    curl: 'curl -i "http://localhost:8000/slow/compute?delay=1.5"'
+    expected_response:
+      status_code: 504
+      body_contains: "gateway_timeout"

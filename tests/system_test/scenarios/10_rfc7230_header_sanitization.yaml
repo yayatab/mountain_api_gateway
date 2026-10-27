@@ -1,0 +1,28 @@
+name: "RFC 7230 Hop-by-Hop Header Sanitization"
+description: "Verifies removal of hop-by-hop headers and dynamic Connection tokens before upstream forwarding."
+
+services:
+  echo-service: up
+
+route:
+  id: "header-sanitization-route"
+  name: "Header Sanitization Route"
+  path_pattern: "/headers-check/**"
+  methods: ["GET"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/headers-check"
+
+config:
+  methods: ["GET"]
+
+curl_commands:
+  - name: "Send hop-by-hop and dynamic tokens"
+    curl: 'curl -i http://localhost:8000/headers-check/headers -H "Connection: close, X-Dynamic-Secret" -H "Keep-Alive: timeout=5" -H "Upgrade: websocket" -H "X-Dynamic-Secret: super-secret" -H "X-Client-Header: PreservedValue"'
+    expected_response:
+      status_code: 200
+      json:
+        headers:
+          x-client-header: "PreservedValue"
+      body_not_contains:
+        - "super-secret"
+        - "websocket"

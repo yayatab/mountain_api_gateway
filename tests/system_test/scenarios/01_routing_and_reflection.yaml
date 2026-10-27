@@ -1,0 +1,40 @@
+name: "Path Rewriting and Reflection"
+description: "Verifies prefix stripping, path parameters, and request body reflection."
+
+services:
+  echo-service: up
+
+route:
+  id: "echo-test-route"
+  name: "Echo Reflection Route"
+  path_pattern: "/echo/**"
+  methods: ["GET", "POST"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/echo"
+  priority: 10
+
+config:
+  methods: ["GET", "POST"]
+
+curl_commands:
+  - name: "Query params and path reflection"
+    curl: 'curl -i "http://localhost:8000/echo/users/42?filter=active&sort=asc"'
+    expected_response:
+      status_code: 200
+      json:
+        method: "GET"
+        path: "/users/42"
+        query_params:
+          filter: "active"
+          sort: "asc"
+
+  - name: "POST JSON body reflection"
+    curl: 'curl -i -X POST http://localhost:8000/echo/items --json "{\"item_id\": 101, \"price\": 29.99}"'
+    expected_response:
+      status_code: 200
+      json:
+        method: "POST"
+        path: "/items"
+        body:
+          item_id: 101
+          price: 29.99
