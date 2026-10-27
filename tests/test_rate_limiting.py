@@ -1,12 +1,21 @@
+import time
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import httpx
 import jwt
 import pytest
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from gateway.config import settings
 from gateway.main import create_app
-from gateway.middleware.rate_limit import InMemoryRateLimitEngine
+from gateway.middleware.rate_limit import (
+    InMemoryRateLimitEngine,
+    RateLimitMiddleware,
+    RedisRateLimitEngine,
+)
+from gateway.models.context import GatewayContext
 from gateway.models.route import (
     AuthMiddlewareConfig,
     HTTPMethod,
@@ -203,3 +212,124 @@ async def test_in_memory_engine_direct():
     res4 = await engine.check_and_record(key, limit=2, window_seconds=60)
     assert res4.allowed is True
     assert res4.remaining == 1
+
+
+class MockRedisPipeline:
+    def __init__(self, execute_return_value):
+        self.execute_return_value = execute_return_value
+        self.calls = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+    def zremrangebyscore(self, *args, **kwargs):
+        self.calls.append(("zremrangebyscore", args, kwargs))
+
+    def zcard(self, *args, **kwargs):
+        self.calls.append(("zcard", args, kwargs))
+
+    def zrange(self, *args, **kwargs):
+        self.calls.append(("zrange", args, kwargs))
+
+    def zadd(self, *args, **kwargs):
+        self.calls.append(("zadd", args, kwargs))
+
+    def expire(self, *args, **kwargs):
+        self.calls.append(("expire", args, kwargs))
+
+    async def execute(self):
+        return self.execute_return_value
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limit_engine_under_limit():
+    mock_redis = MagicMock()
+    pipe = MockRedisPipeline(execute_return_value=[None, 1, [(b"user1", time.time() - 10)]])
+    mock_redis.pipeline.return_value = pipe
+
+    engine = RedisRateLimitEngine(redis_client=mock_redis)
+    result = await engine.check_and_record("test:key", limit=5, window_seconds=60)
+
+    assert result.allowed is True
+    assert result.limit == 5
+    assert result.remaining == 3
+    assert result.retry_after == 0
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limit_engine_over_limit_with_oldest():
+    now = time.time()
+    mock_redis = MagicMock()
+    pipe = MockRedisPipeline(execute_return_value=[None, 5, [(b"oldest_req", now - 20)]])
+    mock_redis.pipeline.return_value = pipe
+
+    engine = RedisRateLimitEngine(redis_client=mock_redis)
+    result = await engine.check_and_record("test:key", limit=5, window_seconds=60)
+
+    assert result.allowed is False
+    assert result.limit == 5
+    assert result.remaining == 0
+    assert result.retry_after >= 39
+
+
+@pytest.mark.asyncio
+async def test_redis_rate_limit_engine_over_limit_without_oldest():
+    mock_redis = MagicMock()
+    pipe = MockRedisPipeline(execute_return_value=[None, 5, []])
+    mock_redis.pipeline.return_value = pipe
+
+    engine = RedisRateLimitEngine(redis_client=mock_redis)
+    result = await engine.check_and_record("test:key", limit=5, window_seconds=60)
+
+    assert result.allowed is False
+    assert result.retry_after == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_middleware_redis_fallback():
+    mock_redis = MagicMock()
+    # Configure pipeline to raise connection error
+    mock_pipe = MagicMock()
+    mock_pipe.__aenter__.side_effect = ConnectionError("Redis unreachable")
+    mock_redis.pipeline.return_value = mock_pipe
+
+    memory_engine = InMemoryRateLimitEngine()
+    middleware = RateLimitMiddleware(redis_client=mock_redis, memory_engine=memory_engine)
+
+    route = RouteDefinition(
+        id="fallback-route",
+        name="Fallback Route",
+        path_pattern="/test",
+        methods={HTTPMethod.GET},
+        upstream_url="http://echo",
+        middleware=MiddlewareConfig(
+            rate_limit=RateLimitConfig(enabled=True, requests_per_minute=2)
+        ),
+    )
+    context = GatewayContext(matched_route=route, client_ip="1.2.3.4")
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/test",
+        "headers": [(b"host", b"localhost")],
+    }
+    request = Request(scope)
+
+    async def call_next(req, ctx):
+        return JSONResponse({"status": "ok"})
+
+    # First call succeeds via in-memory fallback
+    r1 = await middleware(request, context, call_next)
+    assert r1.status_code == 200
+
+    # Second call succeeds
+    r2 = await middleware(request, context, call_next)
+    assert r2.status_code == 200
+
+    # Third call is rate limited by in-memory fallback
+    r3 = await middleware(request, context, call_next)
+    assert r3.status_code == 429

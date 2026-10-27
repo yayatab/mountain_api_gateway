@@ -103,3 +103,27 @@ def test_prepare_client_response_headers_stripping():
     # Content-Length should be removed when streaming
     assert "Content-Length" not in cleaned
     assert "content-length" not in cleaned
+
+
+def test_prepare_upstream_headers_client_host_fallback():
+    # Case 1: client_host is None, incoming Host header is present
+    incoming = {"Host": "frontend.mycorp.internal"}
+    res1 = prepare_upstream_headers(
+        incoming_headers=incoming,
+        client_ip="10.0.0.1",
+        client_host=None,
+        target_url="http://backend:8080/path",
+        request_id="req-fallback",
+    )
+    assert res1["X-Forwarded-Host"] == "frontend.mycorp.internal"
+    assert res1["Host"] == "backend:8080"
+
+    # Case 2: client_host is None, incoming Host header is NOT present -> fall back to target_netloc
+    res2 = prepare_upstream_headers(
+        incoming_headers={},
+        client_ip="10.0.0.1",
+        client_host=None,
+        target_url="http://backend:8080/path",
+        request_id="req-fallback-2",
+    )
+    assert res2["X-Forwarded-Host"] == "backend:8080"

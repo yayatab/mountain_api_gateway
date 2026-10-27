@@ -264,3 +264,60 @@ class TestRouteRegistry:
         match = registry.find_match("GET", "/endpoint/25")
         assert match is not None
         assert match.route.id == "concurrent-25"
+
+    @pytest.mark.asyncio
+    async def test_registry_load_missing_file_noop(self, tmp_path: Path):
+        registry = RouteRegistry()
+        missing = tmp_path / "does_not_exist.json"
+        await registry.load_from_file(missing)
+        assert len(await registry.list_all()) == 0
+
+    @pytest.mark.asyncio
+    async def test_registry_load_empty_file_noop(self, tmp_path: Path):
+        registry = RouteRegistry()
+        empty_file = tmp_path / "empty.json"
+        empty_file.write_text("   \n  ", encoding="utf-8")
+        await registry.load_from_file(empty_file)
+        assert len(await registry.list_all()) == 0
+
+    @pytest.mark.asyncio
+    async def test_registry_update_nonexistent_raises(self):
+        registry = RouteRegistry()
+        route = RouteDefinition(
+            id="nope",
+            path_pattern="/test",
+            upstream_url="http://localhost:8000",
+        )
+        with pytest.raises(KeyError, match="Route with id 'nope' not found"):
+            await registry.update("nope", route)
+
+    @pytest.mark.asyncio
+    async def test_registry_clear(self):
+        registry = RouteRegistry()
+        route = RouteDefinition(
+            id="to-clear",
+            path_pattern="/clear-me",
+            upstream_url="http://localhost:8000",
+        )
+        await registry.register(route)
+        assert len(await registry.list_all()) == 1
+        await registry.clear()
+        assert len(await registry.list_all()) == 0
+        assert registry.find_match("GET", "/clear-me") is None
+
+    def test_route_matcher_normalization_edge_cases(self):
+        matcher = RouteMatcher()
+        assert matcher._normalize_path("") == "/"
+        assert matcher._normalize_path("users/me") == "/users/me"
+        assert matcher._normalize_path("///api///v1////") == "/api/v1"
+
+    def test_route_matcher_empty_methods_allows_all(self):
+        route = RouteDefinition(
+            id="all-methods",
+            path_pattern="/open",
+            methods=set(),
+            upstream_url="http://localhost:8000",
+        )
+        matcher = RouteMatcher([route])
+        allowed = matcher.get_allowed_methods_for_path("/open")
+        assert allowed == set(HTTPMethod)

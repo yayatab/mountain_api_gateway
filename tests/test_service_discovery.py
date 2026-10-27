@@ -502,3 +502,144 @@ def test_empty_containers_default_never_none():
     )
     assert compiled.param_names == []
     assert compiled.param_names is not None
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_reset():
+    cb = CircuitBreaker(failure_threshold=2)
+    cb.record_failure()
+    cb.record_failure()
+    assert cb.state == CircuitState.OPEN
+    cb.reset()
+    assert cb.state == CircuitState.CLOSED
+    assert cb.consecutive_failures == 0
+
+
+@pytest.mark.asyncio
+async def test_health_checker_background_task_lifecycle():
+    registry = RouteRegistry()
+    mock_app = FastAPI()
+
+    @mock_app.get("/health")
+    async def h():
+        return {"status": "ok"}
+
+    transport = httpx.ASGITransport(app=mock_app)
+    custom_client = httpx.AsyncClient(transport=transport, base_url="http://test")
+
+    checker = HealthChecker(
+        registry=registry,
+        check_interval_seconds=0.01,
+        client=custom_client,
+    )
+    assert not checker._running
+    checker.start()
+    assert checker._running
+    assert checker._task is not None
+
+    # Idempotent start
+    checker.start()
+    assert checker._running
+
+    await asyncio.sleep(0.05)
+    await checker.stop()
+    assert not checker._running
+    assert checker._task is None
+    await custom_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_health_checker_probe_500_failure_transition():
+    inst = BackendInstance(url="http://service-fail", status=HealthStatus.HEALTHY)
+    mock_app = FastAPI()
+
+    @mock_app.get("/health")
+    async def h():
+        return fastapi.responses.Response(status_code=500)
+
+    import fastapi.responses
+
+    transport = httpx.ASGITransport(app=mock_app)
+    custom_client = httpx.AsyncClient(transport=transport, base_url="http://service-fail")
+
+    checker = HealthChecker(registry=RouteRegistry(), failure_threshold=2)
+    # First 500 failure
+    await checker.check_backend(custom_client, inst)
+    assert inst.consecutive_failures == 1
+    assert inst.status == HealthStatus.HEALTHY
+
+    # Second 500 failure trips to UNHEALTHY
+    await checker.check_backend(custom_client, inst)
+    assert inst.consecutive_failures == 2
+    assert inst.status == HealthStatus.UNHEALTHY
+
+    # Test _get_client default
+    default_client = await checker._get_client()
+    assert default_client is not None
+    await default_client.aclose()
+    await custom_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_health_checker_check_all_creates_and_closes_client(monkeypatch):
+    inst = BackendInstance(url="http://service-mock", status=HealthStatus.HEALTHY)
+    route = RouteDefinition(
+        id="mock-hc-route",
+        name="Mock HC",
+        path_pattern="/mock-hc",
+        methods={HTTPMethod.GET},
+        upstream_pool={inst},
+    )
+    registry = RouteRegistry(routes=[route])
+    checker = HealthChecker(registry=registry)
+
+    # Mock AsyncClient so it doesn't do real network call
+    mock_client = httpx.AsyncClient(transport=httpx.MockTransport(lambda req: httpx.Response(200)))
+    closed = []
+    original_aclose = mock_client.aclose
+
+    async def mock_aclose():
+        closed.append(True)
+        await original_aclose()
+
+    mock_client.aclose = mock_aclose
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: mock_client)
+
+    await checker.check_all()
+    assert inst.status == HealthStatus.HEALTHY
+    assert len(closed) == 1
+
+
+@pytest.mark.asyncio
+async def test_gateway_lifespan_startup_and_shutdown():
+    registry = RouteRegistry()
+    checker = HealthChecker(registry=registry, check_interval_seconds=60.0)
+    app = create_app(registry=registry, health_checker=checker)
+
+    async with app.router.lifespan_context(app):
+        assert checker._running is True
+        assert checker._task is not None
+
+    assert checker._running is False
+    assert checker._task is None
+
+
+@pytest.mark.asyncio
+async def test_gateway_lifespan_loads_routes_file(tmp_path, monkeypatch):
+    import json
+
+    from gateway.config import settings
+
+    routes_file = tmp_path / "lifespan_routes.json"
+    r = RouteDefinition(
+        id="lifespan-r1",
+        path_pattern="/lifespan",
+        upstream_url="http://localhost:8000",
+    )
+    routes_file.write_text(json.dumps([r.model_dump(mode="json")]), encoding="utf-8")
+    monkeypatch.setattr(settings, "routes_file_path", str(routes_file))
+
+    registry = RouteRegistry()
+    app = create_app(registry=registry)
+    async with app.router.lifespan_context(app):
+        assert await registry.get("lifespan-r1") is not None

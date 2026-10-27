@@ -1,7 +1,11 @@
 import httpx
 import pytest
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from gateway.main import create_app
+from gateway.middleware.base import BaseMiddleware, MiddlewarePipeline
+from gateway.models.context import GatewayContext
 from gateway.models.route import (
     HTTPMethod,
     MiddlewareConfig,
@@ -110,3 +114,58 @@ async def test_prometheus_metrics_endpoint(pipeline_client: httpx.AsyncClient):
 
     assert "gateway_requests_total" in metrics_text
     assert "gateway_request_duration_seconds" in metrics_text
+
+
+class CustomDummyMiddleware(BaseMiddleware):
+    async def __call__(self, request, context, call_next):
+        resp = await call_next(request, context)
+        resp.headers["X-Custom-Added"] = "true"
+        return resp
+
+
+class FailingMiddleware(BaseMiddleware):
+    async def __call__(self, request, context, call_next):
+        raise RuntimeError("Unexpected pipeline crash")
+
+
+@pytest.mark.asyncio
+async def test_middleware_pipeline_add_middleware():
+    pipeline = MiddlewarePipeline()
+    pipeline.add_middleware(CustomDummyMiddleware())
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/test",
+        "headers": [(b"host", b"localhost")],
+    }
+    req = Request(scope)
+    ctx = GatewayContext()
+
+    async def terminal(r, c):
+        return JSONResponse({"ok": True})
+
+    res = await pipeline.execute(req, ctx, terminal)
+    assert res.status_code == 200
+    assert res.headers["X-Custom-Added"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_middleware_pipeline_unhandled_exception_returns_500():
+    pipeline = MiddlewarePipeline([FailingMiddleware()])
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/crash",
+        "headers": [(b"host", b"localhost")],
+    }
+    req = Request(scope)
+    ctx = GatewayContext()
+
+    async def terminal(r, c):
+        return JSONResponse({"ok": True})
+
+    res = await pipeline.execute(req, ctx, terminal)
+    assert res.status_code == 500
+    assert res.headers["X-Request-ID"] == ctx.request_id

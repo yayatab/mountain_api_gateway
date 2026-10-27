@@ -308,3 +308,37 @@ async def test_unauthorized_optional_auth_with_corrupted_token(auth_client: http
     )
     assert resp.status_code == 401
     assert resp.json()["error"] == "invalid_token"
+
+
+@pytest.mark.asyncio
+async def test_auth_single_string_role_and_string_scopes(auth_client: httpx.AsyncClient):
+    # Tests role as single string
+    admin_token = create_token({"sub": "admin_single", "role": "admin"})
+    resp_role = await auth_client.get(
+        "/admin/dashboard",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert resp_role.status_code == 200
+
+    # Tests scopes as space-separated string
+    scope_token = create_token(
+        {"sub": "scope_user", "scope": "read:reports export:data extra:scope"}
+    )
+    resp_scope = await auth_client.get(
+        "/reports/export",
+        headers={"Authorization": f"Bearer {scope_token}"},
+    )
+    assert resp_scope.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_auth_invalid_type_role_and_scopes_fallbacks(auth_client: httpx.AsyncClient):
+    # Tests non-string, non-list roles and scopes fallback to empty set
+    token = create_token({"sub": "user_odd", "role": 12345, "scope": 99999})
+    # Attempting to access admin route requires "admin" role
+    resp = await auth_client.get(
+        "/admin/dashboard",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"] == "forbidden"

@@ -13,6 +13,7 @@
 4. Refactoring container types from `list` to `set` across models (`RouteDefinition`, `BackendInstance`, `GatewayContext`, `AuthMiddlewareConfig`, `TransformConfig`) to eliminate duplicate instances, prevent redundant probes, and ensure deterministic round-robin load balancing.
 5. Implementing automatic route configuration persistence and zero-downtime hot reloading, ensuring that runtime mutations (creation, update, status toggle, deletion) persist to disk and restore cleanly across process restarts.
 6. Implementing complex mock backend services (streaming file hashing with md5/sha1/sha256 calculation over streaming chunks, streaming NDJSON pipeline transformation, and stateful idempotent order processing) to verify true end-to-end ASGI proxy streaming without in-memory buffering.
+7. Raising test coverage to 98% across all gateway subsystems, verifying edge cases including Redis connection failure fallbacks, HTTP connection pool initialization and shutdown lifecycles, health checker background worker cancellation, and route matcher string normalizations.
 
 ## What I Had to Fix
 ![img.png](img.png)
@@ -29,3 +30,5 @@ Using
 - Subtle HTTP/1.1 framing mechanics when combining streaming chunks with hop-by-hop headers and connection release semantics (`stream=True` in HTTPX requiring an explicit `response.aclose()` in a finally block to avoid leaking pool connections).
 - Starlette Request headers caching: modifying ASGI scope headers in middleware (`request.scope["headers"]`) does not automatically invalidate Starlette's cached `request.headers` attribute. To ensure downstream proxy engines read headers injected or stripped by middleware, the proxy engine must re-instantiate `Headers(scope=request.scope)` or explicitly propagate state from `GatewayContext`.
 - type system. the AI did not realize when somethin can/should be nullable. and whether a container should be a set
+- ASGI in-memory half-duplex deadlock when streaming request and response bodies concurrently over `httpx.ASGITransport` without pre-buffering chunk iterations.
+- Identifying correct fixture route paths across large integration test suites (e.g. distinguishing between `/admin/dashboard` application route and `/admin/routes` management API).
