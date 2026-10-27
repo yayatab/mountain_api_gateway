@@ -58,7 +58,7 @@ class RouteMatcher:
                 target_path = self._rewrite_path(normalized_path, compiled_route.route)
                 return MatchResult(
                     route=compiled_route.route,
-                    path_params=path_params, # ty: ignore
+                    path_params=path_params,  # ty: ignore
                     target_path=target_path,
                 )
 
@@ -121,7 +121,7 @@ class RouteMatcher:
         token_scanner = re.compile(r"(\*\*|\*|\{[a-zA-Z_][a-zA-Z0-9_]*\})")
 
         for m in token_scanner.finditer(raw_pattern):
-            literal = raw_pattern[pos: m.start()]
+            literal = raw_pattern[pos : m.start()]
             if literal:
                 regex_parts.append(re.escape(literal))
             token = m.group(1)
@@ -164,7 +164,7 @@ class RouteMatcher:
             if target == strip_norm:
                 target = "/"
             elif target.startswith(strip_norm + "/"):
-                target = target[len(strip_norm):]
+                target = target[len(strip_norm) :]
 
         if add:
             add_norm = self._normalize_path(add)

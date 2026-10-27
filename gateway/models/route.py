@@ -3,6 +3,8 @@ from http import HTTPMethod
 
 from pydantic import BaseModel, Field
 
+HttpMethod = HTTPMethod
+
 
 class AuthMiddlewareConfig(BaseModel):
     enabled: bool = False
@@ -36,7 +38,7 @@ class RouteDefinition(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     path_pattern: str
-    methods: set[HTTPMethod] = Field(default_factory=set)
+    methods: set[HTTPMethod] | list[HTTPMethod] = Field(default_factory=set)
     upstream_url: str
     strip_prefix: str | None = None
     add_prefix: str | None = None
