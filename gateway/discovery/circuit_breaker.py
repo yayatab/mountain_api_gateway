@@ -1,6 +1,8 @@
 import time
 from enum import StrEnum
 
+from pydantic import BaseModel, ConfigDict, PrivateAttr
+
 
 class CircuitState(StrEnum):
     CLOSED = "closed"
@@ -8,18 +10,15 @@ class CircuitState(StrEnum):
     HALF_OPEN = "half_open"
 
 
-class CircuitBreaker:
-    def __init__(
-        self,
-        failure_threshold: int = 3,
-        recovery_timeout_seconds: float = 5.0,
-    ) -> None:
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout_seconds = recovery_timeout_seconds
-        self._state: CircuitState = CircuitState.CLOSED
-        self._consecutive_failures: int = 0
-        self._last_state_change: float = time.monotonic()
-        self._last_failure_time: float = 0.0
+class CircuitBreaker(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    failure_threshold: int = 3
+    recovery_timeout_seconds: float = 5.0
+    _state: CircuitState = PrivateAttr(default=CircuitState.CLOSED)
+    _consecutive_failures: int = PrivateAttr(default=0)
+    _last_state_change: float = PrivateAttr(default_factory=time.monotonic)
+    _last_failure_time: float = PrivateAttr(default=0.0)
 
     @property
     def state(self) -> CircuitState:

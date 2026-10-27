@@ -29,3 +29,12 @@ class BackendInstance(BaseModel):
 class TargetPool(BaseModel):
     backends: set[BackendInstance] = Field(default_factory=set)
     strategy: str = "round_robin"
+
+
+class BackendStatus(BaseModel):
+    url: str
+    status: HealthStatus
+    consecutive_failures: int = 0
+    circuit_state: str
+    weight: int = 1
+    last_checked_at: str | None = None

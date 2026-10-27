@@ -3,19 +3,18 @@ import math
 import time
 import uuid
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from gateway.middleware.base import BaseMiddleware, CallNext
 from gateway.models.context import GatewayContext
 
 
-@dataclass(slots=True)
-class RateLimitResult:
+class RateLimitResult(BaseModel):
     allowed: bool
     limit: int
     remaining: int

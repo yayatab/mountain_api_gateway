@@ -2,7 +2,6 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -16,6 +15,7 @@ from gateway.middleware.metrics import MetricsMiddleware, render_metrics_endpoin
 from gateway.middleware.rate_limit import RateLimitMiddleware
 from gateway.middleware.request_transform import RequestTransformMiddleware
 from gateway.middleware.response_transform import ResponseTransformMiddleware
+from gateway.models.backend import BackendStatus
 from gateway.models.context import GatewayContext
 from gateway.proxy.client import client_pool
 from gateway.proxy.engine import ProxyEngine
@@ -132,8 +132,13 @@ def create_app(
         """Prometheus scrape endpoint."""
         return render_metrics_endpoint()
 
-    @app.get("/admin/backends", tags=["Admin"], summary="Backend inventory and health")
-    async def admin_backends() -> list[dict[str, Any]]:
+    @app.get(
+        "/admin/backends",
+        tags=["Admin"],
+        summary="Backend inventory and health",
+        response_model=list[BackendStatus],
+    )
+    async def admin_backends() -> list[BackendStatus]:
         """Returns inventory of backends with health, failures, and circuit states."""
         lb_inst: LoadBalancer = app.state.load_balancer
         reg_inst: RouteRegistry = app.state.registry

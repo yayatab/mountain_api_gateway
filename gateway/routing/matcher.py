@@ -1,16 +1,18 @@
 import re
-from dataclasses import dataclass
 from http import HTTPMethod
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from gateway.models.route import MatchResult, RouteDefinition
 
 
-@dataclass(slots=True)
-class CompiledRoute:
+class CompiledRoute(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     route: RouteDefinition
     regex: re.Pattern[str]
     specificity_score: int
-    param_names: list[str]
+    param_names: list[str] = Field(default_factory=list)
 
 
 class RouteMatcher:

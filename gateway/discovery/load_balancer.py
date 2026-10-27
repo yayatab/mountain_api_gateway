@@ -1,7 +1,5 @@
-from typing import Any
-
 from gateway.discovery.circuit_breaker import CircuitBreaker
-from gateway.models.backend import BackendInstance, HealthStatus
+from gateway.models.backend import BackendInstance, BackendStatus, HealthStatus
 from gateway.models.route import RouteDefinition
 from gateway.routing.registry import RouteRegistry
 
@@ -68,7 +66,7 @@ class LoadBalancer:
         else:
             cb.record_failure()
 
-    async def get_backends_status(self, registry: RouteRegistry) -> list[dict[str, Any]]:
+    async def get_backends_status(self, registry: RouteRegistry) -> list[BackendStatus]:
         routes = await registry.list_all(include_disabled=True)
         backends_by_url: dict[str, BackendInstance] = {}
 
@@ -82,20 +80,20 @@ class LoadBalancer:
                     status=HealthStatus.HEALTHY,
                 )
 
-        status_list: list[dict[str, Any]] = []
+        status_list: list[BackendStatus] = []
         for url, inst in backends_by_url.items():
             cb = self.get_circuit_breaker(url)
             status_list.append(
-                {
-                    "url": url,
-                    "status": inst.status.value,
-                    "consecutive_failures": inst.consecutive_failures,
-                    "circuit_state": cb.state.value,
-                    "weight": inst.weight,
-                    "last_checked_at": (
+                BackendStatus(
+                    url=url,
+                    status=inst.status,
+                    consecutive_failures=inst.consecutive_failures,
+                    circuit_state=cb.state.value,
+                    weight=inst.weight,
+                    last_checked_at=(
                         inst.last_checked_at.isoformat() if inst.last_checked_at else None
                     ),
-                }
+                )
             )
 
         return status_list

@@ -409,3 +409,37 @@ def test_route_definition_sets_validation():
     assert isinstance(route.middleware.auth.allowed_roles, set)
     assert isinstance(route.middleware.auth.required_scopes, set)
     assert isinstance(route.middleware.transform.remove_request_headers, set)
+
+
+def test_pydantic_models_inheritance():
+    import re
+
+    from pydantic import BaseModel
+
+    from gateway.discovery.circuit_breaker import CircuitBreaker
+    from gateway.middleware.rate_limit import RateLimitResult
+    from gateway.models.backend import BackendStatus
+    from gateway.routing.matcher import CompiledRoute
+
+    cb = CircuitBreaker(failure_threshold=5, recovery_timeout_seconds=2.0)
+    assert isinstance(cb, BaseModel)
+    assert cb.failure_threshold == 5
+
+    rlr = RateLimitResult(allowed=True, limit=100, remaining=99, reset_epoch=12345, retry_after=0)
+    assert isinstance(rlr, BaseModel)
+    assert rlr.allowed is True
+
+    status = BackendStatus(
+        url="http://node:8080", status=HealthStatus.HEALTHY, circuit_state="closed"
+    )
+    assert isinstance(status, BaseModel)
+    assert status.url == "http://node:8080"
+
+    cr = CompiledRoute(
+        route=RouteDefinition(path_pattern="/test"),
+        regex=re.compile(r"^/test$"),
+        specificity_score=10,
+        param_names=[],
+    )
+    assert isinstance(cr, BaseModel)
+    assert cr.specificity_score == 10
