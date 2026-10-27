@@ -1,8 +1,9 @@
 import asyncio
 import json
+from http import HTTPMethod
 from pathlib import Path
 
-from gateway.models.route import HttpMethod, MatchResult, RouteDefinition
+from gateway.models.route import MatchResult, RouteDefinition
 from gateway.routing.matcher import RouteMatcher
 
 
@@ -50,7 +51,7 @@ class RouteRegistry:
     def find_match(self, method: str, path: str) -> MatchResult | None:
         return self._matcher.match(method=method, path=path)
 
-    def get_allowed_methods(self, path: str) -> list[HttpMethod]:
+    def get_allowed_methods(self, path: str) -> set[HTTPMethod]:
         return self._matcher.get_allowed_methods_for_path(path)
 
     async def clear(self) -> None:

@@ -1,7 +1,8 @@
 import re
 from dataclasses import dataclass
+from http import HTTPMethod
 
-from gateway.models.route import HttpMethod, MatchResult, RouteDefinition
+from gateway.models.route import MatchResult, RouteDefinition
 
 
 @dataclass(slots=True)
@@ -63,19 +64,20 @@ class RouteMatcher:
 
         return None
 
-    def get_allowed_methods_for_path(self, path: str) -> list[HttpMethod]:
+    def get_allowed_methods_for_path(self, path: str) -> set[HTTPMethod]:
         normalized_path = self._normalize_path(path)
-        allowed: set[HttpMethod] = set()
+        allowed: set[HTTPMethod] = set()
 
         for compiled_route in self._compiled_routes:
             if compiled_route.regex.match(normalized_path):
                 if not compiled_route.route.methods:
-                    return list(HttpMethod)
+                    return set(HTTPMethod)
                 allowed.update(compiled_route.route.methods)
 
-        return sorted(allowed, key=lambda m: m.value)
+        return allowed
 
-    def _normalize_path(self, path: str) -> str:
+    @staticmethod
+    def _normalize_path(path: str) -> str:
         if not path:
             return "/"
         path = path.strip()

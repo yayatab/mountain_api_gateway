@@ -1,9 +1,8 @@
+from http import HTTPMethod
+
 import pytest
 
-from gateway.models.route import (
-    HttpMethod,
-    RouteDefinition,
-)
+from gateway.models.route import RouteDefinition
 from gateway.routing.matcher import RouteMatcher
 from gateway.routing.registry import RouteRegistry
 
@@ -15,7 +14,7 @@ def sample_routes() -> list[RouteDefinition]:
             id="exact-users",
             name="Exact Users",
             path_pattern="/api/v1/users",
-            methods={HttpMethod.GET, HttpMethod.POST},
+            methods={HTTPMethod.GET, HTTPMethod.POST},
             upstream_url="http://user-service:8000",
             priority=0,
         ),
@@ -23,7 +22,7 @@ def sample_routes() -> list[RouteDefinition]:
             id="user-by-id",
             name="User By ID",
             path_pattern="/api/v1/users/{id}",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://user-service:8000",
             priority=0,
         ),
@@ -31,7 +30,7 @@ def sample_routes() -> list[RouteDefinition]:
             id="wildcard-api",
             name="Wildcard API",
             path_pattern="/api/v1/*",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://catchall-service:8000",
             priority=0,
         ),
@@ -39,7 +38,7 @@ def sample_routes() -> list[RouteDefinition]:
             id="static-assets",
             name="Static Assets Glob",
             path_pattern="/static/**",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://cdn-service:8000",
             priority=0,
         ),
@@ -47,7 +46,7 @@ def sample_routes() -> list[RouteDefinition]:
             id="high-priority-override",
             name="High Priority Override",
             path_pattern="/api/**",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://priority-service:8000",
             priority=100,
         ),
@@ -55,7 +54,7 @@ def sample_routes() -> list[RouteDefinition]:
             id="rewritten-route",
             name="Rewritten Route",
             path_pattern="/service/orders/**",
-            methods={HttpMethod.GET, HttpMethod.POST},
+            methods={HTTPMethod.GET, HTTPMethod.POST},
             upstream_url="http://order-service:8000",
             strip_prefix="/service",
             add_prefix="/v2",

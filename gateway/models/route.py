@@ -1,18 +1,7 @@
 import uuid
-from enum import StrEnum
-
+from http import HTTPMethod
 
 from pydantic import BaseModel, Field
-
-
-class HttpMethod(StrEnum):
-    GET = "GET"
-    POST = "POST"
-    PUT = "PUT"
-    DELETE = "DELETE"
-    PATCH = "PATCH"
-    HEAD = "HEAD"
-    OPTIONS = "OPTIONS"
 
 
 class AuthMiddlewareConfig(BaseModel):
@@ -47,7 +36,7 @@ class RouteDefinition(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     path_pattern: str
-    methods: set[HttpMethod] = Field(default_factory=set)
+    methods: set[HTTPMethod] = Field(default_factory=set)
     upstream_url: str
     strip_prefix: str | None = None
     add_prefix: str | None = None

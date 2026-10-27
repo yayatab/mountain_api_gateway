@@ -1,9 +1,10 @@
 import asyncio
+from http import HTTPMethod
 from pathlib import Path
 
 import pytest
 
-from gateway.models.route import HttpMethod, RouteDefinition
+from gateway.models.route import RouteDefinition
 from gateway.routing.matcher import RouteMatcher
 from gateway.routing.registry import RouteRegistry
 
@@ -13,7 +14,7 @@ class TestRouteMatcher:
         route = RouteDefinition(
             id="users-list",
             path_pattern="/api/v1/users",
-            methods={HttpMethod.GET, HttpMethod.POST},
+            methods={HTTPMethod.GET, HTTPMethod.POST},
             upstream_url="http://user-service:8000",
         )
         matcher = RouteMatcher([route])
@@ -28,7 +29,7 @@ class TestRouteMatcher:
         route = RouteDefinition(
             id="wildcard-items",
             path_pattern="/catalog/*",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://catalog-service:8000",
         )
         matcher = RouteMatcher([route])
@@ -44,7 +45,7 @@ class TestRouteMatcher:
         route = RouteDefinition(
             id="assets-glob",
             path_pattern="/static/**",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://static-service:8000",
         )
         matcher = RouteMatcher([route])
@@ -59,7 +60,7 @@ class TestRouteMatcher:
         route = RouteDefinition(
             id="order-detail",
             path_pattern="/orders/{order_id}/items/{item_id}",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://order-service:8000",
         )
         matcher = RouteMatcher([route])
@@ -72,21 +73,21 @@ class TestRouteMatcher:
         exact_route = RouteDefinition(
             id="exact",
             path_pattern="/api/v1/users",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://users-service:8000",
             priority=0,
         )
         wildcard_route = RouteDefinition(
             id="wildcard",
             path_pattern="/api/v1/*",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://wildcard-service:8000",
             priority=0,
         )
         glob_route = RouteDefinition(
             id="glob",
             path_pattern="/api/**",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://glob-service:8000",
             priority=0,
         )
@@ -100,14 +101,14 @@ class TestRouteMatcher:
         exact_low_priority = RouteDefinition(
             id="exact-low",
             path_pattern="/api/v1/users",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://user-service:8000",
             priority=0,
         )
         glob_high_priority = RouteDefinition(
             id="glob-high",
             path_pattern="/api/**",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://override-service:8000",
             priority=10,
         )
@@ -121,7 +122,7 @@ class TestRouteMatcher:
         route = RouteDefinition(
             id="read-only",
             path_pattern="/api/v1/data",
-            methods={HttpMethod.GET, HttpMethod.HEAD},
+            methods={HTTPMethod.GET, HTTPMethod.HEAD},
             upstream_url="http://data-service:8000",
         )
         matcher = RouteMatcher([route])
@@ -131,13 +132,13 @@ class TestRouteMatcher:
         assert matcher.match("DELETE", "/api/v1/data") is None
 
         allowed = matcher.get_allowed_methods_for_path("/api/v1/data")
-        assert set(allowed) == {HttpMethod.GET, HttpMethod.HEAD}
+        assert set(allowed) == {HTTPMethod.GET, HTTPMethod.HEAD}
 
     def test_path_normalization(self):
         route = RouteDefinition(
             id="normalize-test",
             path_pattern="/api/v1/reports",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://reports-service:8000",
         )
         matcher = RouteMatcher([route])
@@ -149,7 +150,7 @@ class TestRouteMatcher:
         route = RouteDefinition(
             id="rewrite-test",
             path_pattern="/gateway/v1/billing/**",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://billing-service:8000",
             strip_prefix="/gateway/v1",
             add_prefix="/internal",
@@ -179,7 +180,7 @@ class TestRouteRegistry:
         route = RouteDefinition(
             id="route-1",
             path_pattern="/v1/status",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://status-service:8000",
         )
 
@@ -198,7 +199,7 @@ class TestRouteRegistry:
         updated_route = RouteDefinition(
             id="route-1",
             path_pattern="/v1/status",
-            methods={HttpMethod.GET},
+            methods={HTTPMethod.GET},
             upstream_url="http://new-status-service:8000",
         )
         await registry.update("route-1", updated_route)
