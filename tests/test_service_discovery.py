@@ -443,3 +443,62 @@ def test_pydantic_models_inheritance():
     )
     assert isinstance(cr, BaseModel)
     assert cr.specificity_score == 10
+
+
+def test_empty_containers_default_never_none():
+    """Verifies that all container fields default to empty collections (never None)."""
+    import re
+
+    from gateway.models.backend import TargetPool
+    from gateway.models.context import GatewayContext
+    from gateway.models.route import (
+        AuthMiddlewareConfig,
+        MatchResult,
+        RouteDefinition,
+        TransformConfig,
+    )
+    from gateway.routing.matcher import CompiledRoute
+
+    route = RouteDefinition(path_pattern="/default-test")
+    assert route.methods == set()
+    assert route.upstream_pool == set()
+    assert route.methods is not None
+    assert route.upstream_pool is not None
+
+    auth = AuthMiddlewareConfig()
+    assert auth.allowed_roles == set()
+    assert auth.required_scopes == set()
+    assert auth.allowed_roles is not None
+    assert auth.required_scopes is not None
+
+    transform = TransformConfig()
+    assert transform.add_request_headers == {}
+    assert transform.remove_request_headers == set()
+    assert transform.add_response_headers == {}
+    assert transform.add_request_headers is not None
+    assert transform.remove_request_headers is not None
+    assert transform.add_response_headers is not None
+
+    pool = TargetPool()
+    assert pool.backends == set()
+    assert pool.backends is not None
+
+    ctx = GatewayContext()
+    assert ctx.user_roles == set()
+    assert ctx.auth_claims == {}
+    assert ctx.state == {}
+    assert ctx.user_roles is not None
+    assert ctx.auth_claims is not None
+    assert ctx.state is not None
+
+    mr = MatchResult(route=route, target_path="/default-test")
+    assert mr.path_params == {}
+    assert mr.path_params is not None
+
+    compiled = CompiledRoute(
+        route=route,
+        regex=re.compile(r"^/default-test$"),
+        specificity_score=10,
+    )
+    assert compiled.param_names == []
+    assert compiled.param_names is not None

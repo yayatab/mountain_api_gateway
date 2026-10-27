@@ -1,5 +1,9 @@
 # Project Guidelines
 
+## Git & Commits Rules
+
+- **DO NOT commit or push changes without explicit user approval**. Always ask for confirmation before executing `git commit` or `git push`.
+
 ## AI_USAGE.md Maintenance Rules
 
 When updating or logging entries in `AI_USAGE.md`:
