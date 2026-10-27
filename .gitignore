@@ -218,3 +218,17 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Docker container states & data
+.docker/
+docker-compose.override.yml
+*.db
+*.log
+
+# Local data volumes (if you map volumes to local paths)
+/data/
+/db-data/
+
+# Environment secrets
+.env
+.env*.local

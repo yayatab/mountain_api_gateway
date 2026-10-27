@@ -1,0 +1,57 @@
+dockerignore
+# --- Version Control ---
+.git
+.gitignore
+
+# --- Docker & CI/CD ---
+Dockerfile
+docker-compose*
+.dockerignore
+.github/
+
+# --- uv & Python Virtual Environments ---
+# Crucial: Keeps your local environment from clashing with the Docker environment
+.venv/
+venv/
+ENV/
+
+# --- uv Cache & Settings ---
+# Prevents large, OS-specific cache files from being sent to the build daemon
+.uv/
+uv.cache/
+
+# --- Python Build Outputs & Caches ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Distribution & Packaging (if applicable) ---
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+
+# --- Secrets and Environment Variables ---
+.env
+.env.*
+!.env.example
+
+# --- Documentation ---
+README.md
+docs/
