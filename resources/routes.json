@@ -1,0 +1,86 @@
+[
+  {
+    "id": "echo-service-route",
+    "name": "Echo Service Route",
+    "path_pattern": "/echo/**",
+    "methods": ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    "upstream_url": "http://echo-service:8001",
+    "strip_prefix": "/echo",
+    "priority": 10
+  },
+  {
+    "id": "slow-service-route",
+    "name": "Slow Service Route",
+    "path_pattern": "/slow/**",
+    "methods": ["GET", "POST"],
+    "upstream_url": "http://slow-service:8002",
+    "strip_prefix": "/slow",
+    "timeout_seconds": 2.0,
+    "priority": 10
+  },
+  {
+    "id": "flaky-service-route",
+    "name": "Flaky Service Route",
+    "path_pattern": "/flaky/**",
+    "methods": ["GET", "POST"],
+    "upstream_pool": [
+      {
+        "url": "http://flaky-service:8003",
+        "weight": 1,
+        "status": "healthy"
+      }
+    ],
+    "strip_prefix": "/flaky",
+    "priority": 10
+  },
+  {
+    "id": "hasher-service-route",
+    "name": "Hasher Service Route",
+    "path_pattern": "/hasher/**",
+    "methods": ["GET", "POST"],
+    "upstream_url": "http://hasher-service:8004",
+    "strip_prefix": "/hasher",
+    "priority": 10
+  },
+  {
+    "id": "pipeline-service-route",
+    "name": "Pipeline Service Route",
+    "path_pattern": "/pipeline/**",
+    "methods": ["GET", "POST"],
+    "upstream_url": "http://pipeline-service:8005",
+    "strip_prefix": "/pipeline",
+    "priority": 10
+  },
+  {
+    "id": "secure-admin-route",
+    "name": "Secure Admin Route",
+    "path_pattern": "/secure/**",
+    "methods": ["GET", "POST"],
+    "upstream_url": "http://echo-service:8001",
+    "strip_prefix": "/secure",
+    "priority": 20,
+    "middleware": {
+      "auth": {
+        "enabled": true,
+        "required": true,
+        "allowed_roles": ["admin", "superadmin"]
+      }
+    }
+  },
+  {
+    "id": "rate-limited-route",
+    "name": "Rate Limited Route",
+    "path_pattern": "/limited/**",
+    "methods": ["GET", "POST"],
+    "upstream_url": "http://echo-service:8001",
+    "strip_prefix": "/limited",
+    "priority": 20,
+    "middleware": {
+      "rate_limit": {
+        "enabled": true,
+        "requests_per_minute": 5,
+        "key_by": "ip"
+      }
+    }
+  }
+]
