@@ -4,6 +4,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
+from starlette.datastructures import Headers
 
 from gateway.models.context import GatewayContext
 from gateway.proxy.client import client_pool
@@ -49,22 +50,25 @@ class ProxyEngine:
         query_string = request.url.query
         full_upstream_url = self.build_upstream_url(target_base_url, target_path, query_string)
 
-        client_host = request.headers.get("host")
+        current_headers = Headers(scope=request.scope)
+        client_host = current_headers.get("host")
         client_ip = context.client_ip or (request.client.host if request.client else "127.0.0.1")
         scheme = request.url.scheme or "http"
 
         upstream_headers = prepare_upstream_headers(
-            incoming_headers=request.headers,
+            incoming_headers=current_headers,
             client_host=client_host,
             client_ip=client_ip,
             target_url=full_upstream_url,
             request_id=context.request_id,
             scheme=scheme,
+            user_id=context.user_id,
+            user_roles=context.user_roles,
         )
 
         has_body = (
-            "content-length" in request.headers
-            or "transfer-encoding" in request.headers
+            "content-length" in current_headers
+            or "transfer-encoding" in current_headers
             or request.method not in ("GET", "HEAD", "OPTIONS")
         )
         content_stream = request.stream() if has_body else None

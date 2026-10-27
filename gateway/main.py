@@ -7,6 +7,12 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from gateway.config import settings
+from gateway.middleware.auth import AuthMiddleware
+from gateway.middleware.base import MiddlewarePipeline
+from gateway.middleware.metrics import MetricsMiddleware, render_metrics_endpoint
+from gateway.middleware.rate_limit import RateLimitMiddleware
+from gateway.middleware.request_transform import RequestTransformMiddleware
+from gateway.middleware.response_transform import ResponseTransformMiddleware
 from gateway.models.context import GatewayContext
 from gateway.proxy.client import client_pool
 from gateway.proxy.engine import ProxyEngine
@@ -50,6 +56,7 @@ All gateway-level errors follow a unified, structured JSON format without stack 
 RESERVED_SYSTEM_PATHS = {
     "/health",
     "/api/guide",
+    "/metrics",
     "/docs",
     "/docs/oauth2-redirect",
     "/redoc",
@@ -72,6 +79,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def create_app(
     registry: RouteRegistry | None = None,
     proxy_engine: ProxyEngine | None = None,
+    pipeline: MiddlewarePipeline | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Mountain API Gateway",
@@ -86,10 +94,27 @@ def create_app(
     app.state.registry = registry or RouteRegistry()
     app.state.proxy_engine = proxy_engine or ProxyEngine()
 
+    if pipeline is None:
+        pipeline = MiddlewarePipeline(
+            [
+                MetricsMiddleware(),
+                AuthMiddleware(),
+                RateLimitMiddleware(),
+                RequestTransformMiddleware(),
+                ResponseTransformMiddleware(),
+            ]
+        )
+    app.state.pipeline = pipeline
+
     @app.get("/health", tags=["System"], summary="Gateway health check")
     async def health_check() -> dict[str, str]:
         """Health check endpoint indicating API Gateway status."""
         return {"status": "healthy", "service": "api-gateway"}
+
+    @app.get("/metrics", tags=["System"], summary="Prometheus metrics")
+    async def metrics_endpoint() -> Response:
+        """Prometheus scrape endpoint."""
+        return render_metrics_endpoint()
 
     @app.get(
         "/api/guide",
@@ -180,14 +205,18 @@ def create_app(
 
         context.matched_route = match_result.route
         engine: ProxyEngine = app.state.proxy_engine
+        current_pipeline: MiddlewarePipeline = app.state.pipeline
 
-        return await engine.forward(
-            request=request,
-            context=context,
-            target_base_url=match_result.route.upstream_url,
-            target_path=match_result.target_path,
-            timeout_seconds=match_result.route.timeout_seconds,
-        )
+        async def terminal_proxy(req: Request, ctx: GatewayContext) -> Response:
+            return await engine.forward(
+                request=req,
+                context=ctx,
+                target_base_url=match_result.route.upstream_url,
+                target_path=match_result.target_path,
+                timeout_seconds=match_result.route.timeout_seconds,
+            )
+
+        return await current_pipeline.execute(request, context, terminal_proxy)
 
     return app
 
