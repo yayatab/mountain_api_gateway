@@ -1,0 +1,46 @@
+name: "Per-Route Configurable Middleware Chain and Uniqueness"
+description: "Verifies route with custom middleware chain ordering (rate_limit before auth) and bypass behavior."
+
+services:
+  echo-service: up
+
+route:
+  id: "custom-chain-route"
+  name: "Custom Chain Route"
+  path_pattern: "/custom-chain/**"
+  methods: ["GET"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/custom-chain"
+  middleware_chain:
+    - "rate_limit"
+    - "auth"
+
+config:
+  middleware:
+    rate_limit:
+      enabled: true
+      requests_per_minute: 2
+      key_by: "ip"
+    auth:
+      enabled: true
+      required: true
+      allowed_roles: ["admin"]
+
+curl_commands:
+  - name: "Request 1 - fails at auth (401) after rate_limit admits request"
+    curl: 'curl -i http://localhost:8000/custom-chain/resource'
+    expected_response:
+      status_code: 401
+      body_contains: "unauthorized"
+
+  - name: "Request 2 - fails at auth (401) after rate_limit admits request"
+    curl: 'curl -i http://localhost:8000/custom-chain/resource'
+    expected_response:
+      status_code: 401
+      body_contains: "unauthorized"
+
+  - name: "Request 3 - rate_limit trips first (429) before auth can even evaluate"
+    curl: 'curl -i http://localhost:8000/custom-chain/resource'
+    expected_response:
+      status_code: 429
+      body_contains: "rate_limit_exceeded"

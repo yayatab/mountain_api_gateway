@@ -497,3 +497,108 @@ async def test_configuration_persists_after_restart(tmp_path: Path):
 
     await client2.aclose()
     await mock_client2.aclose()
+
+
+@pytest.mark.asyncio
+async def test_admin_create_route_rejects_duplicate_middleware_chain():
+    registry = RouteRegistry()
+    app = create_app(registry=registry)
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://gateway.test"
+    )
+
+    resp = await client.post(
+        "/admin/routes",
+        json={
+            "id": "duplicate-mw-route",
+            "name": "Duplicate MW Route",
+            "path_pattern": "/dup-chain/**",
+            "methods": ["GET"],
+            "upstream_url": "http://echo-service:8001",
+            "middleware_chain": ["auth", "rate_limit", "auth"],
+        },
+    )
+    assert resp.status_code == 422
+    assert "Cannot configure duplicate middleware" in resp.text
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_admin_create_route_hot_loaded_and_permanently_stored(tmp_path: Path):
+    persistence_file = tmp_path / "dynamic_routes.json"
+    transport = MockTransport({"echo-target": make_echo_app("echo-target")})
+
+    # Initialize gateway with clean empty storage file
+    reg1 = RouteRegistry(persistence_path=persistence_file)
+    lb1 = LoadBalancer()
+    mock_client1 = httpx.AsyncClient(transport=transport)
+    engine1 = ProxyEngine(client=mock_client1, on_result=lb1.record_result)
+    gateway_app1 = create_app(registry=reg1, proxy_engine=engine1, load_balancer=lb1)
+
+    client1 = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway_app1),
+        base_url="http://gateway.test",
+    )
+
+    # 1. Verify path is not mapped initially (404)
+    r_init = await client1.get("/dynamic-hot/**/ping")
+    assert r_init.status_code == 404
+
+    # 2. Add route via Admin API at runtime (NOT compile/build time)
+    create_resp = await client1.post(
+        "/admin/routes",
+        json={
+            "id": "hotloaded-route",
+            "name": "Hot-Loaded Dynamic Route",
+            "path_pattern": "/dynamic-hot/**",
+            "methods": ["GET"],
+            "upstream_url": "http://echo-target",
+            "strip_prefix": "/dynamic-hot",
+            "middleware_chain": ["auth"],
+            "middleware": {
+                "auth": {
+                    "enabled": True,
+                    "required": True,
+                    "allowed_roles": ["admin"],
+                }
+            },
+        },
+    )
+    assert create_resp.status_code == 201
+
+    # 3. Verify IMMEDIATELY hot-loaded into running gateway without restart
+    # Protected by auth middleware -> returns 401 Unauthorized
+    r_hot = await client1.get("/dynamic-hot/ping")
+    assert r_hot.status_code == 401
+    assert "unauthorized" in r_hot.text
+
+    # 4. Verify PERMANENTLY stored on disk
+    assert persistence_file.exists()
+    file_content = json.loads(persistence_file.read_text(encoding="utf-8"))
+    assert len(file_content) == 1
+    assert file_content[0]["id"] == "hotloaded-route"
+    assert file_content[0]["middleware_chain"] == ["auth"]
+
+    await client1.aclose()
+    await mock_client1.aclose()
+
+    # 5. Simulate Server Reboot: Start brand new gateway session loading file
+    reg2 = RouteRegistry(persistence_path=persistence_file)
+    await reg2.load_from_file(persistence_file)
+    lb2 = LoadBalancer()
+    mock_client2 = httpx.AsyncClient(transport=transport)
+    engine2 = ProxyEngine(client=mock_client2, on_result=lb2.record_result)
+    gateway_app2 = create_app(registry=reg2, proxy_engine=engine2, load_balancer=lb2)
+
+    client2 = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=gateway_app2),
+        base_url="http://gateway.test",
+    )
+
+    # Re-verify route exists and retains custom middleware chain after restart
+    r_restarted = await client2.get("/dynamic-hot/ping")
+    assert r_restarted.status_code == 401
+    assert "unauthorized" in r_restarted.text
+
+    await client2.aclose()
+    await mock_client2.aclose()

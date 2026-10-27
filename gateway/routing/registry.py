@@ -1,10 +1,16 @@
+from __future__ import annotations
+
 import asyncio
 import json
+import uuid
 from http import HTTPMethod
 from pathlib import Path
 
 from gateway.models.route import MatchResult, RouteDefinition
 from gateway.routing.matcher import RouteMatcher
+from gateway.storage.base import RouteStorage
+from gateway.storage.factory import create_route_storage
+from gateway.storage.file import FileRouteStorage
 
 
 class RouteRegistry:
@@ -12,29 +18,54 @@ class RouteRegistry:
         self,
         routes: list[RouteDefinition] | None = None,
         persistence_path: str | Path | None = None,
+        storage: RouteStorage | None = None,
     ) -> None:
         self._lock = asyncio.Lock()
         self._routes: dict[str, RouteDefinition] = {}
-        self.persistence_path: Path | None = Path(persistence_path) if persistence_path else None
+
+        if storage is not None:
+            self.storage: RouteStorage = storage
+        elif persistence_path is not None:
+            self.storage = FileRouteStorage(file_path=persistence_path)
+        else:
+            self.storage = create_route_storage(persistence_path=persistence_path)
+
         if routes:
             for route in routes:
                 self._routes[route.id] = route
         self._matcher = RouteMatcher(list(self._routes.values()))
 
+    @property
+    def persistence_path(self) -> Path | None:
+        if isinstance(self.storage, FileRouteStorage):
+            return self.storage.file_path
+        return None
+
+    @persistence_path.setter
+    def persistence_path(self, path: Path | str | None) -> None:
+        self.storage = FileRouteStorage(file_path=path)
+
     def _rebuild_matcher(self) -> None:
         self._matcher = RouteMatcher(list(self._routes.values()))
 
-    def _persist_unlocked(self) -> None:
-        if self.persistence_path:
-            self.persistence_path.parent.mkdir(parents=True, exist_ok=True)
-            data = [route.model_dump(mode="json") for route in self._routes.values()]
-            self.persistence_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    async def initialize(self) -> None:
+        """Initializes storage backend and loads active routes into memory."""
+        await self.storage.initialize()
+        await self.load_from_storage()
+
+    async def load_from_storage(self) -> list[RouteDefinition]:
+        """Loads all stored routes into memory and updates matcher."""
+        async with self._lock:
+            stored_routes = await self.storage.load_all()
+            self._routes = {r.id: r for r in stored_routes}
+            self._rebuild_matcher()
+            return list(self._routes.values())
 
     async def register(self, route: RouteDefinition) -> None:
         async with self._lock:
             self._routes[route.id] = route
             self._rebuild_matcher()
-            self._persist_unlocked()
+            await self.storage.save(route)
 
     async def update(self, route_id: str, route: RouteDefinition) -> None:
         async with self._lock:
@@ -43,14 +74,14 @@ class RouteRegistry:
             route.id = route_id
             self._routes[route_id] = route
             self._rebuild_matcher()
-            self._persist_unlocked()
+            await self.storage.save(route)
 
     async def delete(self, route_id: str) -> bool:
         async with self._lock:
             if route_id in self._routes:
                 del self._routes[route_id]
                 self._rebuild_matcher()
-                self._persist_unlocked()
+                await self.storage.delete(route_id)
                 return True
             return False
 
@@ -61,7 +92,7 @@ class RouteRegistry:
                 return None
             route.enabled = enabled
             self._rebuild_matcher()
-            self._persist_unlocked()
+            await self.storage.save(route)
             return route
 
     async def get(self, route_id: str) -> RouteDefinition | None:
@@ -89,15 +120,17 @@ class RouteRegistry:
     async def save_to_file(self, file_path: str | Path) -> None:
         async with self._lock:
             path = Path(file_path)
-            self.persistence_path = path
+            self.storage = FileRouteStorage(file_path=path)
             path.parent.mkdir(parents=True, exist_ok=True)
             data = [route.model_dump(mode="json") for route in self._routes.values()]
-            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp_path = path.with_name(f"{path.name}.tmp-{uuid.uuid4().hex[:8]}")
+            tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp_path.replace(path)
 
     async def load_from_file(self, file_path: str | Path) -> None:
         async with self._lock:
             path = Path(file_path)
-            self.persistence_path = path
+            self.storage = FileRouteStorage(file_path=path)
             if not path.exists():
                 return
             content = path.read_text(encoding="utf-8")

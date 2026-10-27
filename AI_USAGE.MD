@@ -17,6 +17,8 @@
 8. Structuring a multi-stage Docker build with uv and a non-root user, plus Docker Compose orchestration across 7 services (gateway, redis, and 5 backends) with health check dependencies and seed route persistence.
 9. Formulating a comprehensive manual testing playbook (`tests/MANUAL_TESTING.md`), automated live verification script (`scripts/run_manual_tests.sh`), and JWT token generator CLI (`scripts/generate_tokens.py`).
 10. Implementing a declarative, YAML-driven system test harness (`tests/test_system.py`, `tests/system_test/runner.py`) that parses curl commands, dynamically controls upstream service UP/DOWN states, loads route and middleware configurations, and executes end-to-end scenarios under pytest.
+11. Implementing dynamic per-route configurable middleware chains with alias normalization, strict duplicate prevention via Pydantic validators, runtime hot-loading via the Admin API, and atomic disk persistence.
+12. Architecting and implementing pluggable route storage engines (`RouteStorage` protocol with `FileRouteStorage` and `MongoRouteStorage`), automated collection seeding, MongoDB compound indexing, and zero-downtime hot-loading via the Admin API without interrupting proxy traffic.
 
 ## What I Had to Fix
 ![img.png](img.png)

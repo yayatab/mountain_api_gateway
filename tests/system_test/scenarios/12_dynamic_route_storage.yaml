@@ -1,0 +1,61 @@
+name: "Hot-Loaded Dynamic Route Storage and Lifecycle"
+description: "Verifies runtime creation, instant hot-loading, status toggling, and deletion of routes via Admin API."
+
+services:
+  echo-service: up
+
+route:
+  id: "base-echo-route"
+  name: "Base Echo Route"
+  path_pattern: "/base-echo/**"
+  methods: ["GET"]
+  upstream_url: "http://echo-service:8001"
+  strip_prefix: "/base-echo"
+
+curl_commands:
+  - name: "Step 1: Base route is active and proxies traffic"
+    curl: 'curl -i http://localhost:8000/base-echo/ping'
+    expected_response:
+      status_code: 200
+      body_contains: '"path":"/ping"'
+
+  - name: "Step 2: Hot-load new dynamic route via Admin API"
+    curl: >
+      curl -i -X POST http://localhost:8000/admin/routes
+      -H 'Content-Type: application/json'
+      -d '{"id":"dynamic-storage-route","name":"Dynamic Storage Route","path_pattern":"/dynamic-storage/**","methods":["GET"],"upstream_url":"http://echo-service:8001","strip_prefix":"/dynamic-storage","enabled":true}'
+    expected_response:
+      status_code: 201
+      json_match:
+        id: "dynamic-storage-route"
+        name: "Dynamic Storage Route"
+
+  - name: "Step 3: New route is immediately active without restart"
+    curl: 'curl -i http://localhost:8000/dynamic-storage/ping'
+    expected_response:
+      status_code: 200
+      body_contains: '"path":"/ping"'
+
+  - name: "Step 4: Disable dynamic route via Admin API"
+    curl: >
+      curl -i -X PATCH http://localhost:8000/admin/routes/dynamic-storage-route/status
+      -H 'Content-Type: application/json'
+      -d '{"enabled":false}'
+    expected_response:
+      status_code: 200
+      json_match:
+        id: "dynamic-storage-route"
+        enabled: false
+
+  - name: "Step 5: Disabled route returns 404 for incoming traffic"
+    curl: 'curl -i http://localhost:8000/dynamic-storage/ping'
+    expected_response:
+      status_code: 404
+      body_contains: "route_not_found"
+
+  - name: "Step 6: Delete dynamic route via Admin API"
+    curl: 'curl -i -X DELETE http://localhost:8000/admin/routes/dynamic-storage-route'
+    expected_response:
+      status_code: 200
+      json_match:
+        deleted: true

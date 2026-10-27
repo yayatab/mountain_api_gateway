@@ -116,6 +116,7 @@ def _build_route_definition(
         priority=int(merged.get("priority", 0)),
         enabled=merged.get("enabled", True),
         middleware=mw_config,
+        middleware_chain=merged.get("middleware_chain") or merged.get("middlewares") or [],
     )
 
 
@@ -266,14 +267,28 @@ class SystemTestRunner:
             on_result=load_balancer.record_result,
         )
 
+        auth_mw = AuthMiddleware()
+        rl_mw = RateLimitMiddleware(memory_engine=InMemoryRateLimitEngine())
+        req_tr_mw = RequestTransformMiddleware()
+        res_tr_mw = ResponseTransformMiddleware()
+        metrics_mw = MetricsMiddleware()
+
+        named_mw = {
+            "auth": auth_mw,
+            "rate_limit": rl_mw,
+            "request_transform": req_tr_mw,
+            "response_transform": res_tr_mw,
+        }
+
         pipeline = MiddlewarePipeline(
-            [
-                MetricsMiddleware(),
-                AuthMiddleware(),
-                RateLimitMiddleware(memory_engine=InMemoryRateLimitEngine()),
-                RequestTransformMiddleware(),
-                ResponseTransformMiddleware(),
-            ]
+            middlewares=[
+                metrics_mw,
+                auth_mw,
+                rl_mw,
+                req_tr_mw,
+                res_tr_mw,
+            ],
+            named_middlewares=named_mw,
         )
 
         gateway_app = create_app(

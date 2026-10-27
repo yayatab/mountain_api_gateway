@@ -176,10 +176,39 @@ async def admin_backends(request: Request) -> list[BackendStatus]:
 @router.post(
     "/routes/reload",
     response_model=ReloadResult,
-    summary="Hot-reload routes from file without restarting process",
+    summary="Hot-reload routes from storage without restarting process",
 )
 async def reload_routes(request: Request) -> ReloadResult:
     registry = _get_registry(request)
+    if registry.storage:
+        if registry.storage.backend_type == "mongodb":
+            try:
+                routes = await registry.load_from_storage()
+                db = getattr(registry.storage, "database_name", "")
+                col = getattr(registry.storage, "collection_name", "")
+                return ReloadResult(
+                    success=True,
+                    reloaded_count=len(routes),
+                    source=f"mongodb:{db}.{col}",
+                )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to reload routes from MongoDB storage: {e}",
+                ) from e
+        file_path = getattr(registry.storage, "file_path", None)
+        if not file_path or not file_path.exists():
+            raise HTTPException(
+                status_code=400,
+                detail=f"No valid routes file configured or file '{file_path}' does not exist",
+            )
+        routes = await registry.load_from_storage()
+        return ReloadResult(
+            success=True,
+            reloaded_count=len(routes),
+            source=str(file_path),
+        )
+
     path = registry.persistence_path or (
         Path(settings.routes_file_path) if settings.routes_file_path else None
     )

@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-131%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-150%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checked](https://img.shields.io/badge/type%20checker-pyright-blue.svg)](https://github.com/microsoft/pyright)
@@ -34,11 +34,12 @@ flowchart TD
         end
         
         Admin["Admin Management API (/admin/*)"]
-        Registry["Route Registry & Disk Persistence (/config/routes.json)"]
+        Registry["Route Registry & Storage Engine (MongoDB / JSON File)"]
     end
     
     subgraph Backends ["Upstream Services & Data Layer"]
         Redis[("Redis (:6379)")]
+        MongoDB[("MongoDB (:27017)")]
         Echo["Echo Service (:8001)"]
         Slow["Slow Service (:8002)"]
         Flaky["Flaky Service (:8003)"]
@@ -63,6 +64,7 @@ flowchart TD
     
     Admin --> Registry
     Registry --> Router
+    Registry <-->|Async Motor| MongoDB
 ```
 
 ---
@@ -75,7 +77,9 @@ flowchart TD
 - **JWT Authentication & RBAC**: Cryptographic verification (`HS256`/`RS256`), role-based access control (`allowed_roles`), required scopes (`required_scopes`), and upstream identity injection (`X-User-Id`, `X-User-Roles`).
 - **Dual-Tier Sliding Window Rate Limiting**: Distributed Redis sorted set (`ZSET`) implementation with atomic Lua script execution, dynamic `Retry-After` calculation, and transparent fallback to in-memory tracking if Redis is unreachable.
 - **Resilience & Fault Tolerance**: Deterministic round-robin load balancing over healthy instances, background periodic health checks, and a three-state Circuit Breaker (`CLOSED`, `OPEN`, `HALF_OPEN`).
-- **Restart Persistence & Zero-Downtime Reload**: Runtime route mutations (`POST /admin/routes`, `PUT`, `DELETE`, `PATCH /status`) atomically persist to disk and restore cleanly on restart. Hot reload via `POST /admin/routes/reload`.
+- **Pluggable Route Storage (MongoDB & File)**: Full async persistence using MongoDB (`motor` driver) with compound indexing and auto-seeding, or atomic JSON file persistence. Configure via `GATEWAY_STORAGE_BACKEND=mongodb`.
+- **Zero-Downtime Hot-Reload & Admin Mutations**: Runtime route mutations (`POST /admin/routes`, `PUT`, `DELETE`, `PATCH /status`) persist directly to the storage engine while immediately updating the routing table in memory without dropping in-flight requests.
+- **Configurable Middleware Chains per Route**: Routes can declare custom execution order (e.g. `["rate_limit", "auth"]`) or bypass specific stages, with strict duplicate prevention and canonical alias resolution.
 - **Comprehensive Observability**: Prometheus metrics endpoint (`/metrics`), structured request correlation via `X-Request-ID`, and `Server-Timing` / `X-Response-Time` latency headers.
 
 ---
@@ -98,6 +102,7 @@ The services will initialize on the following ports:
 - **Hasher Service**: `http://localhost:8004`
 - **Data Pipeline Service**: `http://localhost:8005`
 - **Redis Server**: `localhost:6379`
+- **MongoDB Server**: `localhost:27017`
 
 ### Option B: Run Locally with `uv`
 
@@ -521,6 +526,7 @@ mountain_api_gateway/
 │   ├── models/            # Pydantic v2 schemas (Route, Backend, Context, Admin)
 │   ├── proxy/             # True streaming proxy engine, connection pool, RFC 7230 headers
 │   ├── routing/           # Regex route matcher, concurrency-safe RouteRegistry
+│   ├── storage/           # Pluggable route storage (Base, File, MongoDB, Factory)
 │   ├── config.py          # Environment settings (Pydantic BaseSettings)
 │   └── main.py            # FastAPI lifespan, router mounting, gateway entrypoint
 ├── mock_backend_services/ # Realistic test backends
@@ -532,7 +538,7 @@ mountain_api_gateway/
 │   └── models.py          # Pydantic schemas for backend services
 ├── config/
 │   └── routes.json        # Persistent seed route configuration
-├── tests/                 # 121 comprehensive pytest unit & integration tests
+├── tests/                 # 150 comprehensive pytest unit, integration & system tests
 ├── Dockerfile             # Multi-stage production container build (uv + python:3.12-slim)
 ├── docker-compose.yml     # Complete orchestration (Gateway, Redis, and 5 backends)
 ├── DECISIONS.md           # Deep architectural rationale and design decisions

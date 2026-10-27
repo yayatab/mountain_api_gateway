@@ -17,5 +17,13 @@ class GatewaySettings(BaseSettings):
     routes_file_path: str | None = None
     log_level: str = "INFO"
 
+    # Route Storage Settings
+    storage_backend: str = "file"  # "mongodb" or "file"
+    mongodb_uri: str = "mongodb://localhost:27017"
+    mongodb_database: str = "mountain_gateway"
+    mongodb_collection: str = "routes"
+    mongodb_timeout_ms: int = 3000
+    seed_routes_file: str | None = "config/routes.json"
+
 
 settings = GatewaySettings()

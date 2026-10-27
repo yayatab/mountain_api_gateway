@@ -1,11 +1,28 @@
 import uuid
 from http import HTTPMethod
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from gateway.models.backend import BackendInstance
 
 HttpMethod = HTTPMethod
+
+VALID_MIDDLEWARE_NAMES: set[str] = {
+    "auth",
+    "rate_limit",
+    "request_transform",
+    "response_transform",
+}
+
+MIDDLEWARE_ALIASES: dict[str, str] = {
+    "jwt": "auth",
+    "authentication": "auth",
+    "ratelimit": "rate_limit",
+    "rate_limiter": "rate_limit",
+    "transform_request": "request_transform",
+    "transform_response": "response_transform",
+}
 
 
 class AuthMiddlewareConfig(BaseModel):
@@ -49,6 +66,45 @@ class RouteDefinition(BaseModel):
     timeout_seconds: float = 30.0
     enabled: bool = True
     middleware: MiddlewareConfig = Field(default_factory=MiddlewareConfig)
+    middleware_chain: list[str] = Field(
+        default_factory=list,
+        description="Explicit ordered list of middlewares. Duplicates are forbidden.",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def handle_middleware_chain_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "middlewares" in data and "middleware_chain" not in data:
+            data["middleware_chain"] = data["middlewares"]
+        return data
+
+    @field_validator("middleware_chain", mode="before")
+    @classmethod
+    def validate_and_normalize_middleware_chain(cls, v: Any) -> list[str] | None:
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            raise ValueError("middleware_chain must be a list of middleware name strings")
+
+        seen: set[str] = set()
+        normalized_chain: list[str] = []
+        for item in v:
+            if not isinstance(item, str):
+                raise ValueError("Each middleware in middleware_chain must be a string")
+            raw_name = item.strip().lower()
+            canonical_name = MIDDLEWARE_ALIASES.get(raw_name, raw_name)
+            if canonical_name not in VALID_MIDDLEWARE_NAMES:
+                valid_list = ", ".join(sorted(VALID_MIDDLEWARE_NAMES))
+                raise ValueError(
+                    f"Unknown middleware '{item}'. Valid middlewares are: {valid_list}"
+                )
+            if canonical_name in seen:
+                raise ValueError(
+                    f"Cannot configure duplicate middleware '{item}' on the same route."
+                )
+            seen.add(canonical_name)
+            normalized_chain.append(canonical_name)
+        return normalized_chain
 
 
 class MatchResult(BaseModel):

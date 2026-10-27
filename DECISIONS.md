@@ -171,8 +171,45 @@ All error responses return clean, structured JSON envelopes conforming to RFC 78
 
 ---
 
-## 9. Future Production Improvements
+## 10. Per-Route Configurable Middleware Chains & Duplicate Restriction
+
+### Dynamic Middleware Ordering per Route
+Rather than forcing all routes through a rigid global middleware order, routes can explicitly define an ordered `middleware_chain`:
+```json
+{
+  "path_pattern": "/api/protected/**",
+  "middleware_chain": ["rate_limit", "auth"]
+}
+```
+- **Custom Execution Order**: Routes that prioritize burst defense can run `rate_limit` before `auth` (dropping throttled requests before cryptographic JWT verification). Routes that prioritize quota preservation run `auth` before `rate_limit`.
+- **Targeted Bypass**: Omitted middlewares are cleanly bypassed for that route, avoiding redundant checks.
+- **Backward Compatibility**: Routes without an explicit `middleware_chain` default to standard full pipeline execution governed by `middleware.<type>.enabled`.
+
+### Strict Duplicate Restriction
+A route cannot configure duplicate middleware instances (e.g. configuring `auth` twice or `rate_limit` twice).
+- **Validation**: Enforced during Pydantic schema validation (`@field_validator("middleware_chain")`).
+- **Canonical Aliases**: Normalizes common aliases (e.g. `jwt` $\to$ `auth`, `ratelimit` $\to$ `rate_limit`), preventing duplicate injection via different naming conventions.
+- **Rejection**: Attempting to register a route with duplicate middlewares returns `422 Unprocessable Entity`.
+
+---
+
+## 11. Pluggable Route Storage Backends (File & MongoDB) with Hot-Loading
+
+### Storage Decoupling Architecture
+Route persistence and registry operations are decoupled from physical storage mediums via the `RouteStorage` abstract base class (`gateway/storage/base.py`):
+- `FileRouteStorage`: Atomic disk file writes using temporary files and directory rename operations.
+- `MongoRouteStorage`: Asynchronous persistence via MongoDB (`motor` driver) with compound indexing on `path_pattern` and `enabled`.
+- `create_route_storage`: Factory pattern abstracting storage instantiation based on environment configuration (`GATEWAY_STORAGE_BACKEND`).
+
+### Zero-Downtime Hot-Loading
+- **Startup Seeding**: When MongoDB starts with an empty collection, it automatically seeds initial route definitions from the configured seed file (`GATEWAY_SEED_ROUTES_FILE`), ensuring immediate out-of-the-box readiness.
+- **Admin Hot-Loading**: Mutations made via the Admin API (`POST /admin/routes`, `PUT`, `DELETE`, `PATCH /status`) persist directly to the active storage engine while immediately updating the in-memory `RouteMatcher`.
+- **Hot-Reload Trigger**: The `POST /admin/routes/reload` endpoint re-syncs the in-memory registry with the underlying storage backend without process restarts.
+
+---
+
+## 12. Future Production Improvements
 
 1. **Kernel Zero-Copy Splicing**: Utilize Linux `splice(2)` / `vmsplice` via epoll to pipe sockets directly in kernel space for multi-gigabit throughput.
 2. **HTTP/2 & HTTP/3 Multiplexing**: Support end-to-end multiplexed upstream connections over single TCP/QUIC sessions.
-3. **Distributed Raft Synchronization**: Replace disk file persistence with distributed consensus (e.g. etcd, HashiCorp Consul, or internal Raft) for multi-node gateway clusters.
+3. **Distributed Raft Synchronization**: Replace single-instance storage with distributed consensus (e.g. etcd, HashiCorp Consul, or internal Raft) for multi-node gateway clusters.

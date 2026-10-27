@@ -169,3 +169,130 @@ async def test_middleware_pipeline_unhandled_exception_returns_500():
     res = await pipeline.execute(req, ctx, terminal)
     assert res.status_code == 500
     assert res.headers["X-Request-ID"] == ctx.request_id
+
+
+# ---------------------------------------------------------------------------
+# PER-ROUTE CONFIGURABLE MIDDLEWARE CHAIN & DUPLICATE RESTRICTION TESTS
+# ---------------------------------------------------------------------------
+
+
+def test_route_definition_rejects_duplicate_middleware():
+    with pytest.raises(Exception) as exc_info:
+        RouteDefinition(
+            path_pattern="/duplicate-test",
+            upstream_url="http://echo-service",
+            middleware_chain=["auth", "rate_limit", "auth"],
+        )
+    assert "Cannot configure duplicate middleware 'auth'" in str(exc_info.value)
+
+
+def test_route_definition_rejects_duplicate_middleware_case_insensitive():
+    with pytest.raises(Exception) as exc_info:
+        RouteDefinition(
+            path_pattern="/case-dup-test",
+            upstream_url="http://echo-service",
+            middleware_chain=["Rate_Limit", "rate_limit"],
+        )
+    assert "Cannot configure duplicate middleware" in str(exc_info.value)
+
+
+def test_route_definition_rejects_duplicate_middleware_via_alias():
+    with pytest.raises(Exception) as exc_info:
+        RouteDefinition(
+            path_pattern="/alias-dup-test",
+            upstream_url="http://echo-service",
+            middleware_chain=["auth", "jwt"],
+        )
+    assert "Cannot configure duplicate middleware" in str(exc_info.value)
+
+
+def test_route_definition_rejects_unknown_middleware():
+    with pytest.raises(Exception) as exc_info:
+        RouteDefinition(
+            path_pattern="/unknown-mw-test",
+            upstream_url="http://echo-service",
+            middleware_chain=["auth", "nonexistent_firewall"],
+        )
+    assert "Unknown middleware 'nonexistent_firewall'" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_per_route_middleware_chain_execution_order_and_bypass():
+    from gateway.middleware.auth import AuthMiddleware
+    from gateway.middleware.rate_limit import InMemoryRateLimitEngine, RateLimitMiddleware
+    from gateway.models.route import AuthMiddlewareConfig
+
+    # Route 1: rate_limit runs FIRST, before auth
+    route_rate_first = RouteDefinition(
+        id="rate-first-route",
+        path_pattern="/rate-first/**",
+        methods={HTTPMethod.GET},
+        upstream_url="http://echo-service",
+        strip_prefix="/rate-first",
+        middleware_chain=["rate_limit", "auth"],
+        middleware=MiddlewareConfig(
+            rate_limit=RateLimitConfig(enabled=True, requests_per_minute=2),
+            auth=AuthMiddlewareConfig(enabled=True, required=True, allowed_roles={"admin"}),
+        ),
+    )
+
+    # Route 2: auth runs FIRST, before rate_limit
+    route_auth_first = RouteDefinition(
+        id="auth-first-route",
+        path_pattern="/auth-first/**",
+        methods={HTTPMethod.GET},
+        upstream_url="http://echo-service",
+        strip_prefix="/auth-first",
+        middleware_chain=["auth", "rate_limit"],
+        middleware=MiddlewareConfig(
+            rate_limit=RateLimitConfig(enabled=True, requests_per_minute=2),
+            auth=AuthMiddlewareConfig(enabled=True, required=True, allowed_roles={"admin"}),
+        ),
+    )
+
+    # Route 3: only auth in chain (rate limit bypassed)
+    route_only_auth = RouteDefinition(
+        id="only-auth-route",
+        path_pattern="/only-auth/**",
+        methods={HTTPMethod.GET},
+        upstream_url="http://echo-service",
+        strip_prefix="/only-auth",
+        middleware_chain=["auth"],
+        middleware=MiddlewareConfig(
+            rate_limit=RateLimitConfig(enabled=True, requests_per_minute=2),
+            auth=AuthMiddlewareConfig(enabled=True, required=False),
+        ),
+    )
+
+    registry = RouteRegistry(routes=[route_rate_first, route_auth_first, route_only_auth])
+    auth_mw = AuthMiddleware()
+    rl_mw = RateLimitMiddleware(memory_engine=InMemoryRateLimitEngine())
+    pipeline = MiddlewarePipeline(
+        middlewares=[auth_mw, rl_mw],
+        named_middlewares={"auth": auth_mw, "rate_limit": rl_mw},
+    )
+
+    mock_client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=echo_app), base_url="http://echo-service"
+    )
+    engine = ProxyEngine(client=mock_client)
+    app = create_app(registry=registry, proxy_engine=engine, pipeline=pipeline)
+    client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://gateway.test"
+    )
+
+    # Route 1: rate_limit first -> request 1 (401), request 2 (401), request 3 -> 429
+    r1 = await client.get("/rate-first/ping")
+    assert r1.status_code == 401
+    r2 = await client.get("/rate-first/ping")
+    assert r2.status_code == 401
+    r3 = await client.get("/rate-first/ping")
+    assert r3.status_code == 429  # Hit rate limit before auth!
+
+    # Route 3: only auth in chain -> rate limit is bypassed completely
+    for _ in range(5):
+        resp = await client.get("/only-auth/ping")
+        assert resp.status_code == 200
+
+    await client.aclose()
+    await mock_client.aclose()

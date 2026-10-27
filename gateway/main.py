@@ -77,15 +77,21 @@ RESERVED_SYSTEM_PATHS = {
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: initialize connection pool
     await client_pool.startup()
-    # Load routes from file if configured
-    if settings.routes_file_path:
-        await app.state.registry.load_from_file(settings.routes_file_path)
+    # Initialize storage backend and load routes
+    if hasattr(app.state, "registry") and app.state.registry:
+        await app.state.registry.initialize()
     if hasattr(app.state, "health_checker"):
         app.state.health_checker.start()
     yield
-    # Shutdown: cleanly close HTTP connections & health checker
+    # Shutdown: cleanly close HTTP connections, health checker, and storage
     if hasattr(app.state, "health_checker"):
         await app.state.health_checker.stop()
+    if (
+        hasattr(app.state, "registry")
+        and app.state.registry
+        and hasattr(app.state.registry, "storage")
+    ):
+        await app.state.registry.storage.close()
     await client_pool.shutdown()
 
 
@@ -118,14 +124,28 @@ def create_app(
     app.state.proxy_engine = proxy_engine or ProxyEngine(on_result=lb.record_result)
 
     if pipeline is None:
+        metrics_mw = MetricsMiddleware()
+        auth_mw = AuthMiddleware()
+        rl_mw = RateLimitMiddleware()
+        req_tr_mw = RequestTransformMiddleware()
+        res_tr_mw = ResponseTransformMiddleware()
+
+        named_mw = {
+            "auth": auth_mw,
+            "rate_limit": rl_mw,
+            "request_transform": req_tr_mw,
+            "response_transform": res_tr_mw,
+        }
+
         pipeline = MiddlewarePipeline(
-            [
-                MetricsMiddleware(),
-                AuthMiddleware(),
-                RateLimitMiddleware(),
-                RequestTransformMiddleware(),
-                ResponseTransformMiddleware(),
-            ]
+            middlewares=[
+                metrics_mw,
+                auth_mw,
+                rl_mw,
+                req_tr_mw,
+                res_tr_mw,
+            ],
+            named_middlewares=named_mw,
         )
     app.state.pipeline = pipeline
 
