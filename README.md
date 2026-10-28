@@ -123,7 +123,7 @@ GATEWAY_ROUTES_FILE_PATH=config/routes.json uv run uvicorn gateway.main:app --po
 Mountain API Gateway maintains an exhaustive test suite with **98% code coverage**, strict type checking, and zero lint warnings:
 
 ```bash
-# Run 173 unit, integration, and system tests with coverage report
+# Run 180 unit, integration, and system tests with coverage report
 uv run pytest --cov=gateway --cov=mock_backend_services --cov-report=term-missing
 
 # Run code style & formatting checks
@@ -573,7 +573,7 @@ mountain_api_gateway/
 │   └── models.py          # Pydantic schemas for backend services
 ├── config/
 │   └── routes.json        # Persistent seed route configuration
-├── tests/                 # 173 comprehensive pytest unit, integration, live-database & containerized tests
+├── tests/                 # 180 comprehensive pytest unit, integration, live-database & containerized tests
 ├── Dockerfile             # Multi-stage production container build (uv + python:3.12-slim)
 ├── docker-compose.yml     # Complete orchestration (Gateway, Redis, MongoDB, and 5 backends)
 ├── DECISIONS.md           # Deep architectural rationale and design decisions

@@ -1,0 +1,42 @@
+name: "Disabled Route and Unhealthy Backend Rejection"
+description: "Verifies that disabled routes return 404 and routes with unhealthy backends return 503."
+
+services:
+  echo-service: up
+
+routes:
+  - id: "scenario-disabled-route"
+    name: "Disabled Route"
+    path_pattern: "/scenario-disabled/**"
+    methods: ["GET", "POST"]
+    upstream_url: "http://echo-service:8001"
+    strip_prefix: "/scenario-disabled"
+    enabled: false
+    priority: 10
+
+  - id: "scenario-unhealthy-route"
+    name: "Unhealthy Backend Route"
+    path_pattern: "/scenario-unhealthy/**"
+    methods: ["GET", "POST"]
+    upstream_pool:
+      - url: "http://echo-service:8099"
+        weight: 1
+        status: "unhealthy"
+        consecutive_failures: 5
+        circuit_state: "open"
+    strip_prefix: "/scenario-unhealthy"
+    enabled: true
+    priority: 10
+
+curl_commands:
+  - name: "Step 1: Attempt to access disabled route"
+    curl: 'curl -i http://localhost:8000/scenario-disabled/ping'
+    expected_response:
+      status_code: 404
+      body_contains: "route_not_found"
+
+  - name: "Step 2: Attempt to access unhealthy backend route"
+    curl: 'curl -i http://localhost:8000/scenario-unhealthy/ping'
+    expected_response:
+      status_code: 503
+      body_contains: "service_unavailable"

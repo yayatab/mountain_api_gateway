@@ -188,6 +188,19 @@ curl -i http://localhost:8000/api/unknown/service
 }
 ```
 
+#### Test Case 2.5: Configured Disabled Route — 404 Not Found (TC-32)
+Request a configured route that has `enabled: false`:
+```bash
+curl -i http://localhost:8000/disabled/ping
+```
+**Expected Output (`404 Not Found`):**
+```json
+{
+  "error": "route_not_found",
+  "message": "No active route found for path /disabled/ping"
+}
+```
+
 ---
 
 ### Phase 3: RFC 7230 Header Transformation & State Propagation
@@ -435,6 +448,19 @@ curl -i http://localhost:8000/dead/test
 Clean up test route:
 ```bash
 curl -s -X DELETE http://localhost:8000/admin/routes/dead-service-route > /dev/null
+```
+
+#### Test Case 6.5: Unhealthy Upstream Backend Pool — 503 Service Unavailable (TC-33)
+Request a configured route whose upstream pool instances are all marked `unhealthy`:
+```bash
+curl -i http://localhost:8000/unhealthy/ping
+```
+**Expected Response (`503 Service Unavailable`):**
+```json
+{
+  "error": "service_unavailable",
+  "message": "No healthy upstream backends for route 'unhealthy-backend-route'"
+}
 ```
 
 ---

@@ -643,3 +643,35 @@ async def test_gateway_lifespan_loads_routes_file(tmp_path, monkeypatch):
     app = create_app(registry=registry)
     async with app.router.lifespan_context(app):
         assert await registry.get("lifespan-r1") is not None
+
+
+@pytest.mark.asyncio
+async def test_route_with_all_unhealthy_backends_returns_503():
+    """Verifies that accessing a route whose upstream pool instances are all unhealthy
+
+    returns 503.
+    """
+    registry = RouteRegistry()
+    route = RouteDefinition(
+        id="all-unhealthy-route",
+        path_pattern="/unhealthy/**",
+        methods={HTTPMethod.GET},
+        upstream_pool={
+            BackendInstance(
+                url="http://dead-host:8099",
+                status=HealthStatus.UNHEALTHY,
+                consecutive_failures=5,
+            )
+        },
+    )
+    await registry.register(route)
+    app = create_app(registry=registry)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        resp = await client.get("/unhealthy/ping")
+        assert resp.status_code == 503
+        data = resp.json()
+        assert data["error"] == "service_unavailable"
+        assert "No healthy upstream backends" in data["message"]

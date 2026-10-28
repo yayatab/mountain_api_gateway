@@ -166,8 +166,26 @@ else
   echo -e "${RED}FAILED (Creation failed)${NC} Output: $CREATE_RESP"
 fi
 
-# 15. Automated Containerized Pytest Suite
-echo -n "15. Running Full Containerized Pytest Suite (tests/test_containerized.py)... "
+# 15. Disabled Route Rejection
+echo -n "15. Verifying Disabled Route Rejection (/disabled/ping)... "
+DIS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/disabled/ping")
+if [ "$DIS_CODE" -eq 404 ]; then
+  echo -e "${GREEN}PASSED (HTTP 404 Not Found)${NC}"
+else
+  echo -e "${RED}FAILED (HTTP ${DIS_CODE})${NC}"
+fi
+
+# 16. Unhealthy Backend Route Rejection
+echo -n "16. Verifying Unhealthy Backend Rejection (/unhealthy/ping)... "
+UNH_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/unhealthy/ping")
+if [ "$UNH_CODE" -eq 503 ]; then
+  echo -e "${GREEN}PASSED (HTTP 503 Service Unavailable)${NC}"
+else
+  echo -e "${RED}FAILED (HTTP ${UNH_CODE})${NC}"
+fi
+
+# 17. Automated Containerized Pytest Suite
+echo -n "17. Running Full Containerized Pytest Suite (tests/test_containerized.py)... "
 if uv run pytest tests/test_containerized.py -q > /tmp/container_pytest.log 2>&1; then
   echo -e "${GREEN}PASSED (All containerized tests green)${NC}"
 else

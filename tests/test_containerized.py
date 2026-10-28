@@ -430,3 +430,28 @@ async def test_live_mongodb_route_storage_in_container(http_client: httpx.AsyncC
     finally:
         await col.delete_one({"_id": route_id})
         raw_mongo.close()
+
+
+# ===========================================================================
+# 6. NEGATIVE RESILIENCE: DISABLED ROUTES & UNHEALTHY BACKENDS
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+async def test_service_disabled_route_rejection(http_client: httpx.AsyncClient):
+    """Verifies that accessing a configured disabled route returns HTTP 404 route_not_found."""
+    resp = await http_client.get("/disabled/ping")
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["error"] == "route_not_found"
+    assert "No active route found" in body["message"]
+
+
+@pytest.mark.asyncio
+async def test_service_unhealthy_backend_rejection(http_client: httpx.AsyncClient):
+    """Verifies that accessing a route with an unhealthy upstream backend returns HTTP 503."""
+    resp = await http_client.get("/unhealthy/ping")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["error"] == "service_unavailable"
+    assert "No healthy upstream backends" in body["message"]

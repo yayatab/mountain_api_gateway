@@ -23,6 +23,7 @@ from gateway.discovery.load_balancer import LoadBalancer
 from gateway.main import create_app
 from gateway.middleware.base import MiddlewarePipeline
 from gateway.middleware.rate_limit import RateLimitMiddleware
+from gateway.models.backend import BackendInstance, HealthStatus
 from gateway.models.context import GatewayContext
 from gateway.models.route import (
     MiddlewareConfig,
@@ -466,3 +467,76 @@ async def test_system_scenarios_run_against_live_databases():
         if keys:
             await raw_redis.delete(*keys)
         await raw_redis.aclose()
+
+
+@pytest.mark.asyncio
+async def test_live_mongo_disabled_route_and_unhealthy_backend():
+    """Verifies that disabled routes return 404 and unhealthy backends return 503
+
+    when persisted and loaded through live MongoDB storage.
+    """
+    if not await _is_mongo_available():
+        pytest.skip("MongoDB is not running on localhost:27017")
+
+    db_name = f"test_disabled_unhealthy_{uuid.uuid4().hex[:8]}"
+    storage = MongoRouteStorage(uri=MONGO_URI, database=db_name, collection="routes")
+    await storage.initialize()
+
+    disabled_route = RouteDefinition(
+        id="live-disabled-route",
+        path_pattern="/live-disabled/**",
+        methods={HTTPMethod.GET},
+        upstream_url="http://echo-service:8001",
+        enabled=False,
+    )
+    unhealthy_route = RouteDefinition(
+        id="live-unhealthy-route",
+        path_pattern="/live-unhealthy/**",
+        methods={HTTPMethod.GET},
+        upstream_pool={
+            BackendInstance(
+                url="http://dead-host:8099",
+                status=HealthStatus.UNHEALTHY,
+                consecutive_failures=5,
+            )
+        },
+        enabled=True,
+    )
+
+    raw_mongo = AsyncIOMotorClient(MONGO_URI)
+    try:
+        # Save both to MongoDB
+        await storage.save(disabled_route)
+        await storage.save(unhealthy_route)
+
+        # Direct Mongo checks
+        doc_dis = await raw_mongo[db_name]["routes"].find_one({"_id": "live-disabled-route"})
+        assert doc_dis is not None
+        assert doc_dis["enabled"] is False
+
+        doc_unh = await raw_mongo[db_name]["routes"].find_one({"_id": "live-unhealthy-route"})
+        assert doc_unh is not None
+        assert doc_unh["upstream_pool"][0]["status"] == "unhealthy"
+
+        # Create registry from storage
+        registry = RouteRegistry(storage=storage)
+        await registry.load_from_storage()
+
+        app = create_app(registry=registry)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            # 1. Disabled route returns 404
+            res_dis = await client.get("/live-disabled/ping")
+            assert res_dis.status_code == 404
+            assert res_dis.json()["error"] == "route_not_found"
+
+            # 2. Unhealthy backend returns 503
+            res_unh = await client.get("/live-unhealthy/ping")
+            assert res_unh.status_code == 503
+            assert res_unh.json()["error"] == "service_unavailable"
+
+    finally:
+        await storage.close()
+        await raw_mongo.drop_database(db_name)
+        raw_mongo.close()

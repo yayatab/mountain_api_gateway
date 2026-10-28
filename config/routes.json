@@ -82,5 +82,32 @@
         "key_by": "ip"
       }
     }
+  },
+  {
+    "id": "disabled-service-route",
+    "name": "Disabled Service Route",
+    "path_pattern": "/disabled/**",
+    "methods": ["GET", "POST"],
+    "upstream_url": "http://echo-service:8001",
+    "strip_prefix": "/disabled",
+    "enabled": false,
+    "priority": 10
+  },
+  {
+    "id": "unhealthy-backend-route",
+    "name": "Unhealthy Backend Route",
+    "path_pattern": "/unhealthy/**",
+    "methods": ["GET", "POST"],
+    "upstream_pool": [
+      {
+        "url": "http://echo-service:8099",
+        "weight": 1,
+        "status": "unhealthy",
+        "consecutive_failures": 5,
+        "circuit_state": "open"
+      }
+    ],
+    "strip_prefix": "/unhealthy",
+    "priority": 10
   }
 ]

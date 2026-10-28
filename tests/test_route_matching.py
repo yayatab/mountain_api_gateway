@@ -321,3 +321,27 @@ class TestRouteRegistry:
         matcher = RouteMatcher([route])
         allowed = matcher.get_allowed_methods_for_path("/open")
         assert allowed == set(HTTPMethod)
+
+    def test_route_matcher_disabled_route_is_not_matched(self):
+        route = RouteDefinition(
+            id="disabled-route",
+            path_pattern="/disabled/**",
+            methods={HTTPMethod.GET},
+            upstream_url="http://localhost:8000",
+            enabled=False,
+        )
+        matcher = RouteMatcher([route])
+        assert matcher.match("GET", "/disabled/ping") is None
+
+    @pytest.mark.asyncio
+    async def test_registry_disabled_route_returns_none_on_find_match(self):
+        registry = RouteRegistry()
+        route = RouteDefinition(
+            id="disabled-service",
+            path_pattern="/disabled/**",
+            methods={HTTPMethod.GET},
+            upstream_url="http://localhost:8000",
+            enabled=False,
+        )
+        await registry.register(route)
+        assert registry.find_match("GET", "/disabled/ping") is None
