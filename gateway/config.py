@@ -16,6 +16,8 @@ class GatewaySettings(BaseSettings):
     jwt_algorithm: str = "HS256"
     routes_file_path: str | None = None
     log_level: str = "INFO"
+    log_format: str = "console"  # "console" or "json"
+    log_colors: bool = True
 
     # Route Storage Settings
     storage_backend: str = "file"  # "mongodb" or "file"

@@ -11,6 +11,7 @@ from gateway.admin.routes import router as admin_router
 from gateway.config import settings
 from gateway.discovery.health_checker import HealthChecker
 from gateway.discovery.load_balancer import LoadBalancer, NoHealthyBackendException
+from gateway.logging.setup import setup_logging
 from gateway.middleware.auth import AuthMiddleware
 from gateway.middleware.base import MiddlewarePipeline
 from gateway.middleware.metrics import MetricsMiddleware, render_metrics_endpoint
@@ -114,6 +115,12 @@ def create_app(
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+    )
+
+    setup_logging(
+        log_level=settings.log_level,
+        log_format=settings.log_format,
+        enable_colors=settings.log_colors,
     )
 
     app.state.start_time = time.perf_counter()

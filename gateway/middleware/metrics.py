@@ -62,17 +62,24 @@ class MetricsMiddleware(BaseMiddleware):
             route_id=route_id,
         ).observe(duration)
 
+        extra_fields = {
+            "http_method": method,
+            "path": request.url.path,
+            "status_code": status_code,
+            "duration_ms": duration * 1000,
+            "client_ip": context.client_ip,
+            "request_id": context.request_id,
+            "route_id": route_id,
+            "user_id": context.user_id or "anonymous",
+        }
+
         logger.info(
-            "access_log method=%s path=%s status=%s latency_ms=%.2f "
-            "ip=%s request_id=%s route_id=%s user=%s",
+            "%s %s -> %s (%.2fms)",
             method,
             request.url.path,
             status_code,
             duration * 1000,
-            context.client_ip,
-            context.request_id,
-            route_id,
-            context.user_id or "anonymous",
+            extra=extra_fields,
         )
 
         return response

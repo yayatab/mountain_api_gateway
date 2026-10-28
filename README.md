@@ -123,7 +123,7 @@ GATEWAY_ROUTES_FILE_PATH=config/routes.json uv run uvicorn gateway.main:app --po
 Mountain API Gateway maintains an exhaustive test suite with **98% code coverage**, strict type checking, and zero lint warnings:
 
 ```bash
-# Run 131 unit, integration, and system tests with coverage report
+# Run 173 unit, integration, and system tests with coverage report
 uv run pytest --cov=gateway --cov=mock_backend_services --cov-report=term-missing
 
 # Run code style & formatting checks
@@ -515,6 +515,40 @@ gateway_active_routes 7.0
 
 ---
 
+### 9. Unified Structured Logging (Console & ECS / Elasticsearch)
+
+Mountain API Gateway features a dual-mode structured logging engine tailored for both human terminal inspection and automated cloud observability pipelines.
+
+Configure logging mode via `GATEWAY_LOG_FORMAT` in your `.env` or container environment:
+- **`console`** (Default for local): Clean, aligned, color-coded terminal logs optimized for terminal readability by humans and LLMs:
+  ```text
+  2026-10-28 02:15:30.123 [INFO] [gateway.access] [73d89783] GET /echo/ping -> 200 OK (17.88ms) | route=echo-service-route ip=192.168.65.1
+  ```
+- **`json`** (Default in `docker-compose.yml`): Single-line NDJSON strictly following [Elastic Common Schema (ECS)](https://www.elastic.co/guide/en/ecs/current/index.html) and embedding Prometheus metric labels:
+  ```json
+  {
+    "@timestamp": "2026-10-28T00:17:28.360Z",
+    "log.level": "INFO",
+    "log.logger": "gateway.access",
+    "message": "GET /echo/ping -> 200 (17.88ms)",
+    "service.name": "mountain-api-gateway",
+    "service.version": "0.1.0",
+    "trace.id": "73d89783-c0e3-47f5-a272-3a55ce51ee82",
+    "http": {
+      "request": {"method": "GET", "path": "/echo/ping"},
+      "response": {"status_code": 200, "duration_ms": 17.88}
+    },
+    "client": {"ip": "192.168.65.1"},
+    "route": {"id": "echo-service-route"},
+    "prometheus": {
+      "metric": "gateway_requests_total",
+      "labels": {"method": "GET", "route_id": "echo-service-route", "status_code": "200"}
+    }
+  }
+  ```
+
+---
+
 ## 7. Project Structure
 
 ```text
@@ -522,6 +556,7 @@ mountain_api_gateway/
 ├── gateway/
 │   ├── admin/             # Admin API routes (CRUD, stats, health, reload)
 │   ├── discovery/         # Circuit breaker, round-robin load balancer, health checker
+│   ├── logging/           # Structured logging (ECS JSON, color console, Prometheus alignment)
 │   ├── middleware/        # JWT auth, Redis/memory rate limiter, transforms, metrics
 │   ├── models/            # Pydantic v2 schemas (Route, Backend, Context, Admin)
 │   ├── proxy/             # True streaming proxy engine, connection pool, RFC 7230 headers
@@ -538,9 +573,9 @@ mountain_api_gateway/
 │   └── models.py          # Pydantic schemas for backend services
 ├── config/
 │   └── routes.json        # Persistent seed route configuration
-├── tests/                 # 164 comprehensive pytest unit, integration, live-database & containerized tests
+├── tests/                 # 173 comprehensive pytest unit, integration, live-database & containerized tests
 ├── Dockerfile             # Multi-stage production container build (uv + python:3.12-slim)
-├── docker-compose.yml     # Complete orchestration (Gateway, Redis, and 5 backends)
+├── docker-compose.yml     # Complete orchestration (Gateway, Redis, MongoDB, and 5 backends)
 ├── DECISIONS.md           # Deep architectural rationale and design decisions
 └── AI_USAGE.md            # Transparent record of AI tool usage and human fixes
 ```

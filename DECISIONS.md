@@ -208,7 +208,34 @@ Route persistence and registry operations are decoupled from physical storage me
 
 ---
 
-## 12. Future Production Improvements
+## 12. Structured Logging Architecture: Dual-Mode Console & ECS/Prometheus
+
+### Dual Logging Engines for Different Consumers
+API Gateway observability serves two fundamentally different consumers:
+1. **Human Operators & LLMs in Terminal**: Need concise, visually aligned, color-coded, single-line logs that can be quickly scanned during development, CLI debugging, and automated code review.
+2. **Log Aggregators & SIEMs (Elasticsearch, Logstash, Datadog, Vector)**: Require single-line NDJSON strictly complying with the [Elastic Common Schema (ECS)](https://www.elastic.co/guide/en/ecs/current/index.html) for fast indexation, filtering, and cross-service distributed tracing.
+
+### Core Design Decisions
+- **Unified Extensible Record**: The gateway emits standard Python `LogRecord` objects with structured dictionary attributes in `extra` (e.g. `http_method`, `path`, `status_code`, `duration_ms`, `route_id`, `client_ip`, `user_id`, `request_id`).
+- **Elastic Common Schema (ECS) Compliance**:
+  - `@timestamp`: ISO-8601 UTC timestamp with millisecond precision (`YYYY-MM-DDTHH:MM:SS.sssZ`).
+  - `log.level`, `log.logger`: Standard ECS log fields.
+  - `service.name`, `service.version`: Service identity metadata.
+  - `trace.id`: Distributed trace identifier (`x-request-id`), correlating gateway logs with upstream backend traces.
+  - `http.request.method`, `http.response.status_code`, `http.response.duration_ms`: Standardized HTTP dimensions.
+- **Prometheus Metric Dimension Correlation**:
+  - The JSON formatter embeds `prometheus.metric` and `prometheus.labels` (`method`, `route_id`, `status_code`) directly within HTTP access log records.
+  - **Operational Benefit**: In observability dashboards (e.g., Grafana), operators alerting on a spike in `gateway_requests_total{status_code="500", route_id="echo-route"}` can pivot immediately into Elasticsearch/Loki using the exact same label keys without writing translation queries.
+- **Clean Console Formatter**:
+  - Formats logs into aligned terminal columns:
+    `[timestamp] [LEVEL] [logger] [req-id] METHOD /path -> STATUS (duration_ms) | route=... ip=... user=...`
+  - Automatically checks `sys.stdout.isatty()` to disable ANSI escape codes when redirected to files or captured in CI pipes.
+- **Environment Toggle**:
+  - Selected via `GATEWAY_LOG_FORMAT=console|json`. Default is `console` for local runs, and `json` for containerized and production deployments.
+
+---
+
+## 13. Future Production Improvements
 
 1. **Kernel Zero-Copy Splicing**: Utilize Linux `splice(2)` / `vmsplice` via epoll to pipe sockets directly in kernel space for multi-gigabit throughput.
 2. **HTTP/2 & HTTP/3 Multiplexing**: Support end-to-end multiplexed upstream connections over single TCP/QUIC sessions.

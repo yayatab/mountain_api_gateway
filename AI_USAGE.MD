@@ -21,6 +21,7 @@
 12. Architecting and implementing pluggable route storage engines (`RouteStorage` protocol with `FileRouteStorage` and `MongoRouteStorage`), automated collection seeding, MongoDB compound indexing, and zero-downtime hot-loading via the Admin API without interrupting proxy traffic.
 13. Designing automated live database tests (`tests/test_live_databases.py`) that connect to real Redis and MongoDB instances, execute gateway traffic and Admin API mutations, and directly inspect database keys, ZSET timestamps, TTLs, collections, and indexes to verify actual database usage.
 14. Implementing full containerized end-to-end integration tests (`tests/test_containerized.py`) verifying all 5 mock backend microservices, all middleware pipelines, and both live databases (Redis & MongoDB) running inside the Docker Compose network.
+15. Designing and implementing a dual-mode structured logging architecture (`gateway/logging/`) featuring color-coded, aligned terminal formatting for humans and LLMs alongside Elastic Common Schema (ECS) NDJSON formatting with 1:1 Prometheus metric dimension correlation for Elasticsearch, Logstash, Vector, and Datadog.
 
 ## What I Had to Fix
 ![img.png](img.png)
