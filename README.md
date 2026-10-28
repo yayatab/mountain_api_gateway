@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-164%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-183%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checked](https://img.shields.io/badge/type%20checker-pyright-blue.svg)](https://github.com/microsoft/pyright)
@@ -123,7 +123,7 @@ GATEWAY_ROUTES_FILE_PATH=config/routes.json uv run uvicorn gateway.main:app --po
 Mountain API Gateway maintains an exhaustive test suite with **98% code coverage**, strict type checking, and zero lint warnings:
 
 ```bash
-# Run 180 unit, integration, and system tests with coverage report
+# Run 183 unit, integration, and system tests with coverage report
 uv run pytest --cov=gateway --cov=mock_backend_services --cov-report=term-missing
 
 # Run code style & formatting checks

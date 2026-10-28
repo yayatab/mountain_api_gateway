@@ -1,3 +1,4 @@
+import logging
 import time
 from pathlib import Path
 
@@ -15,6 +16,8 @@ from gateway.models.admin import (
 from gateway.models.backend import BackendStatus, HealthStatus
 from gateway.models.route import RouteDefinition
 from gateway.routing.registry import RouteRegistry
+
+logger = logging.getLogger("gateway.admin")
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -192,6 +195,11 @@ async def reload_routes(request: Request) -> ReloadResult:
                     source=f"mongodb:{db}.{col}",
                 )
             except Exception as e:
+                logger.error(
+                    "Unexpected error reloading routes from MongoDB storage: %s",
+                    e,
+                    exc_info=True,
+                )
                 raise HTTPException(
                     status_code=500,
                     detail=f"Failed to reload routes from MongoDB storage: {e}",

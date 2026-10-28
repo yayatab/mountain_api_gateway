@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from urllib.parse import urljoin, urlparse
@@ -13,6 +14,8 @@ from gateway.proxy.headers import (
     prepare_client_response_headers,
     prepare_upstream_headers,
 )
+
+logger = logging.getLogger("gateway.proxy")
 
 
 class ProxyEngine:
@@ -90,7 +93,14 @@ class ProxyEngine:
             upstream_resp = await client.send(upstream_req, stream=True)
             if self._on_result:
                 self._on_result(target_base_url, upstream_resp.status_code < 500)
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as exc:
+            logger.warning(
+                "Upstream timeout [%s] for %s after %ss: %s",
+                context.request_id,
+                target_base_url,
+                timeout_seconds,
+                exc,
+            )
             if self._on_result:
                 self._on_result(target_base_url, False)
             return JSONResponse(
@@ -102,7 +112,13 @@ class ProxyEngine:
                     "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
-        except (httpx.ConnectError, httpx.NetworkError):
+        except (httpx.ConnectError, httpx.NetworkError) as exc:
+            logger.warning(
+                "Upstream connection failure [%s] for %s: %s",
+                context.request_id,
+                target_base_url,
+                exc,
+            )
             if self._on_result:
                 self._on_result(target_base_url, False)
             return JSONResponse(
@@ -110,6 +126,25 @@ class ProxyEngine:
                 content={
                     "error": "bad_gateway",
                     "message": "Failed to connect to upstream backend",
+                    "request_id": context.request_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+        except Exception as exc:
+            logger.error(
+                "Unexpected proxy error [%s] forwarding to %s: %s",
+                context.request_id,
+                target_base_url,
+                exc,
+                exc_info=True,
+            )
+            if self._on_result:
+                self._on_result(target_base_url, False)
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "error": "bad_gateway",
+                    "message": "Unexpected proxy error connecting to upstream backend",
                     "request_id": context.request_id,
                     "timestamp": datetime.now(UTC).isoformat(),
                 },

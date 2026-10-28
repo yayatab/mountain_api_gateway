@@ -26,10 +26,30 @@ class ResponseTransformMiddleware(BaseMiddleware):
         if "X-Request-ID" not in response.headers:
             response.headers["X-Request-ID"] = context.request_id
 
-        # Inject route-level custom response headers
+        # Strip configured response headers
         route = context.matched_route
+        if route and route.middleware.transform.remove_response_headers:
+            remove_set = {h.lower() for h in route.middleware.transform.remove_response_headers}
+            for h in list(response.headers.keys()):
+                if h.lower() in remove_set:
+                    del response.headers[h]
+
+        # Inject route-level custom response headers
         if route and route.middleware.transform.add_response_headers:
             for k, v in route.middleware.transform.add_response_headers.items():
                 response.headers[k] = v
+
+        # Inject CORS headers if enabled
+        if route and route.middleware.transform.cors_enabled:
+            transform = route.middleware.transform
+            origin = transform.cors_allow_origin
+            if origin == "*" and request.headers.get("origin"):
+                origin = "*"
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = transform.cors_allow_methods
+            response.headers["Access-Control-Allow-Headers"] = transform.cors_allow_headers
+            response.headers["Access-Control-Max-Age"] = str(transform.cors_max_age)
+            if transform.cors_allow_credentials:
+                response.headers["Access-Control-Allow-Credentials"] = "true"
 
         return response

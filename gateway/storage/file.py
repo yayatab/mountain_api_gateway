@@ -84,7 +84,13 @@ class FileRouteStorage(RouteStorage):
         try:
             data = json.loads(content)
             return {item["id"]: RouteDefinition.model_validate(item) for item in data}
-        except Exception:
+        except Exception as exc:
+            logger.error(
+                "Unexpected error reading routes from file '%s': %s",
+                self.file_path,
+                exc,
+                exc_info=True,
+            )
             return {}
 
     async def _write_routes_unlocked(self, routes: dict[str, RouteDefinition]) -> None:
@@ -96,7 +102,10 @@ class FileRouteStorage(RouteStorage):
         tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         try:
             tmp_path.replace(self.file_path)
-        except OSError:
+        except OSError as exc:
             # Handles bind-mounted single files in Docker (Errno 16 Device or resource busy)
+            logger.warning(
+                "Atomic rename failed on bind mount (%s); falling back to direct write", exc
+            )
             self.file_path.write_text(tmp_path.read_text(encoding="utf-8"), encoding="utf-8")
             tmp_path.unlink(missing_ok=True)

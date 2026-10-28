@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -22,6 +23,8 @@ from gateway.models.context import GatewayContext
 from gateway.proxy.client import client_pool
 from gateway.proxy.engine import ProxyEngine
 from gateway.routing.registry import RouteRegistry
+
+logger = logging.getLogger("gateway.main")
 
 GATEWAY_DESCRIPTION = """
 # Mountain API Gateway
@@ -266,7 +269,13 @@ def create_app(
 
         try:
             selected_target_url = lb_inst.select_backend(match_result.route)
-        except NoHealthyBackendException:
+        except NoHealthyBackendException as exc:
+            logger.warning(
+                "No healthy upstream backends for route '%s' [%s]: %s",
+                match_result.route.id,
+                context.request_id,
+                exc,
+            )
             return JSONResponse(
                 status_code=503,
                 headers={"X-Request-ID": context.request_id},

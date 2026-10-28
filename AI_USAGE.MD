@@ -23,6 +23,7 @@
 14. Implementing full containerized end-to-end integration tests (`tests/test_containerized.py`) verifying all 5 mock backend microservices, all middleware pipelines, and both live databases (Redis & MongoDB) running inside the Docker Compose network.
 15. Designing and implementing a dual-mode structured logging architecture (`gateway/logging/`) featuring color-coded, aligned terminal formatting for humans and LLMs alongside Elastic Common Schema (ECS) NDJSON formatting with 1:1 Prometheus metric dimension correlation for Elasticsearch, Logstash, Vector, and Datadog.
 16. Generating comprehensive negative resilience and route status test coverage across all test harnesses (unit, integration, live database, YAML system tests, containerized suite, and manual verification scripts) validating that configured disabled routes consistently reject traffic with HTTP 404 (`route_not_found`) and upstream pools with all unhealthy instances fail fast with HTTP 503 (`service_unavailable`).
+17. Formulating backward-compatible model schema validators mapping assignment specification attributes (`path`, `target`, `middlewares`, `middleware_config`, `scopes`) to internal gateway domain models, implementing CORS header injection in response transforms, and auditing `DECISIONS.md` against official interview rubric templates.
 
 ## What I Had to Fix
 ![img.png](img.png)
@@ -44,3 +45,4 @@ Using
 - Identifying correct fixture route paths across large integration test suites (e.g. distinguishing between `/admin/dashboard` application route and `/admin/routes` management API).
 - Initial validation error on seed `routes.json` due to case sensitivity mismatch between string `"HEALTHY"` and `HealthStatus` StrEnum values (`"healthy"`), caught and corrected during container route persistence verification.
 - realizing that the goal is to also deliver a docker-compose file and making sure everything runs with redis and mongo
+- Case sensitivity differences between raw JSON booleans (`true`/`false`) and Python literals (`True`/`False`) when porting assignment PDF payloads directly into pytest fixtures.

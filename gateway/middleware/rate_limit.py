@@ -179,9 +179,11 @@ class RateLimitMiddleware(BaseMiddleware):
                     self._redis_engine.check_and_record(cache_key, limit, window_seconds),
                     timeout=0.2,
                 )
-            except Exception:
+            except Exception as exc:
                 # Redis unavailable or timed out; fall back seamlessly to memory engine
-                pass
+                logger.warning(
+                    "Redis rate limit check failed (%s); falling back to memory engine", exc
+                )
         return await self._memory_engine.check_and_record(cache_key, limit, window_seconds)
 
     async def __call__(

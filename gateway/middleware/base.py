@@ -83,8 +83,11 @@ class MiddlewarePipeline:
         try:
             return await dispatch(0, request, context)
         except Exception as err:
-            logger.exception(
-                "Unhandled error in gateway pipeline [%s] [%s]", context.request_id, err
+            logger.error(
+                "Unhandled error in gateway pipeline [%s]: %s",
+                context.request_id,
+                err,
+                exc_info=True,
             )
             return JSONResponse(
                 status_code=500,

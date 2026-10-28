@@ -40,10 +40,16 @@ class HealthChecker:
         client: httpx.AsyncClient,
         instance: BackendInstance,
     ) -> None:
-        probe_url = f"{instance.url.rstrip('/')}{self.health_path}"
+        target_path = instance.health_check_endpoint or self.health_path
+        if not target_path.startswith("/"):
+            target_path = f"/{target_path}"
+        probe_url = f"{instance.url.rstrip('/')}{target_path}"
+        now_dt = datetime.now(UTC)
         try:
             resp = await client.get(probe_url, timeout=self.timeout_seconds)
-            instance.last_checked_at = datetime.now(UTC)
+            instance.last_checked_at = now_dt
+            instance.last_health_check_time = now_dt
+            instance.updated_at = now_dt
             if 200 <= resp.status_code < 300:
                 instance.status = HealthStatus.HEALTHY
                 instance.consecutive_failures = 0
@@ -51,8 +57,11 @@ class HealthChecker:
                 instance.consecutive_failures += 1
                 if instance.consecutive_failures >= self.failure_threshold:
                     instance.status = HealthStatus.UNHEALTHY
-        except Exception:
-            instance.last_checked_at = datetime.now(UTC)
+        except Exception as exc:
+            logger.warning("Backend health probe failed for %s: %s", instance.url, exc)
+            instance.last_checked_at = now_dt
+            instance.last_health_check_time = now_dt
+            instance.updated_at = now_dt
             instance.consecutive_failures += 1
             if instance.consecutive_failures >= self.failure_threshold:
                 instance.status = HealthStatus.UNHEALTHY
@@ -87,8 +96,8 @@ class HealthChecker:
                 await self.check_all()
             except asyncio.CancelledError:
                 break
-            except Exception:
-                logger.exception("Error in health check worker loop")
+            except Exception as exc:
+                logger.error("Unexpected error in health check worker loop: %s", exc, exc_info=True)
 
     def start(self) -> None:
         if not self._running:

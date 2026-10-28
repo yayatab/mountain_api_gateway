@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,6 +9,8 @@ from fastapi.responses import JSONResponse
 from gateway.config import settings
 from gateway.middleware.base import BaseMiddleware, CallNext
 from gateway.models.context import GatewayContext
+
+logger = logging.getLogger("gateway.auth")
 
 
 class AuthMiddleware(BaseMiddleware):
@@ -58,7 +61,8 @@ class AuthMiddleware(BaseMiddleware):
                 self._secret,
                 algorithms=[self._algorithm],
             )
-        except jwt.ExpiredSignatureError:
+        except jwt.ExpiredSignatureError as err:
+            logger.warning("Authentication token expired [%s]: %s", context.request_id, err)
             return JSONResponse(
                 status_code=401,
                 headers={"X-Request-ID": context.request_id},
@@ -69,13 +73,31 @@ class AuthMiddleware(BaseMiddleware):
                     "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
-        except jwt.InvalidTokenError:
+        except jwt.InvalidTokenError as err:
+            logger.warning("Invalid authentication token [%s]: %s", context.request_id, err)
             return JSONResponse(
                 status_code=401,
                 headers={"X-Request-ID": context.request_id},
                 content={
                     "error": "invalid_token",
                     "message": "Invalid authentication token",
+                    "request_id": context.request_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+        except Exception as err:
+            logger.error(
+                "Unexpected error validating authentication token [%s]: %s",
+                context.request_id,
+                err,
+                exc_info=True,
+            )
+            return JSONResponse(
+                status_code=500,
+                headers={"X-Request-ID": context.request_id},
+                content={
+                    "error": "internal_error",
+                    "message": "Unexpected error validating authentication token",
                     "request_id": context.request_id,
                     "timestamp": datetime.now(UTC).isoformat(),
                 },

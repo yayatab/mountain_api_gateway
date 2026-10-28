@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import uuid
 from collections.abc import AsyncGenerator
@@ -9,6 +10,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from mock_backend_services.models import OrderProcessResult, PipelineRecord, ServiceHealth
+
+logger = logging.getLogger("mock_backend.pipeline")
 
 app = FastAPI(
     title="Mock Data Pipeline Service",
@@ -53,7 +56,8 @@ async def transform_event_stream(request: Request) -> StreamingResponse:
                 out_line = json.dumps(record.model_dump()) + "\n"
                 yield out_line.encode("utf-8")
                 await asyncio.sleep(0)
-            except Exception:
+            except Exception as exc:
+                logger.warning("Skipping malformed NDJSON line: %s", exc)
                 continue
 
     return StreamingResponse(stream_transformer(), media_type="application/x-ndjson")
