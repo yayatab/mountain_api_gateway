@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import math
 import time
 import uuid
@@ -12,6 +13,8 @@ from pydantic import BaseModel
 
 from gateway.middleware.base import BaseMiddleware, CallNext
 from gateway.models.context import GatewayContext
+
+logger = logging.getLogger("gateway.middleware.rate_limit")
 
 
 class RateLimitResult(BaseModel):
@@ -133,13 +136,27 @@ class RateLimitMiddleware(BaseMiddleware):
     def __init__(
         self,
         redis_client: aioredis.Redis | None = None,
+        redis_url: str | None = None,
         memory_engine: InMemoryRateLimitEngine | None = None,
     ) -> None:
         self._memory_engine = memory_engine or InMemoryRateLimitEngine()
         self._redis_client = redis_client
+        if not self._redis_client and redis_url:
+            try:
+                self._redis_client = aioredis.from_url(redis_url, socket_timeout=0.5)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to create Redis client for %s (%s); rate limiting will use memory",
+                    redis_url,
+                    exc,
+                )
         self._redis_engine: RedisRateLimitEngine | None = None
         if self._redis_client:
             self._redis_engine = RedisRateLimitEngine(self._redis_client)
+
+    async def close(self) -> None:
+        if self._redis_client:
+            await self._redis_client.aclose()
 
     def _resolve_identity_key(self, request: Request, context: GatewayContext, key_by: str) -> str:
         if key_by == "user" and context.user_id:

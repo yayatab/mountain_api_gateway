@@ -30,6 +30,7 @@ docker compose up --build
 | **Hasher Service** | `http://localhost:8004` | Chunked upload hashing & streaming download generation |
 | **Pipeline Service** | `http://localhost:8005`| Streaming NDJSON transformation & idempotent order cache |
 | **Redis Server** | `localhost:6379` | Distributed sliding-window rate limit store |
+| **MongoDB Server** | `localhost:27017` | Persistent dynamic route storage & index collection |
 
 #### Option B: Local Python Multi-Process (uv)
 ```bash
@@ -80,6 +81,10 @@ uv run uvicorn mock_backend_services.data_pipeline_service:app --port 8005 &
 | **TC-25** | Admin API | Route Status Toggle | `PATCH /admin/routes/{id}/status` | `200 OK` | Disable route $\to$ 404; enable $\to$ 200 |
 | **TC-26** | Admin API | Hot Reload Config | `POST /admin/routes/reload` | `200 OK` | In-memory atomic table replacement |
 | **TC-27** | Admin API | Restart Persistence | Restart container/process | `200 OK` | Dynamic changes persist across restart |
+| **TC-28** | Containerized | Full Stack Automated Suite | `pytest tests/test_containerized.py` | `10 passed` | Validates all 8 containers & middlewares |
+| **TC-29** | Database | Direct Redis Inspection | `redis-cli keys "rl:*"` | `Keys found` | ZSET cards, scores, and TTL confirmed |
+| **TC-30** | Database | Direct MongoDB Inspection | `mongosh --eval "db.routes.find()"` | `Docs found` | Documents & compound indexes verified |
+| **TC-31** | Database | Live DB Automated Suite | `pytest tests/test_live_databases.py` | `4 passed` | Proves physical writes & index creation |
 
 ---
 
@@ -581,6 +586,70 @@ curl -i -X DELETE http://localhost:8000/admin/routes/catalog-service-route
 
 ---
 
+### Phase 9: Containerized Full-Stack Verification (Docker Compose)
+
+This phase verifies that the entire gateway architecture—including all 5 mock backends, Redis, and MongoDB—operates seamlessly when fully isolated inside Docker containers.
+
+#### Test Case 9.1: Container Stack Health Probing (TC-28)
+Verify all 8 containers are healthy and running:
+```bash
+docker compose ps
+```
+**Expected Output:**
+All containers (`mountain_gateway`, `mountain_redis`, `mountain_mongodb`, `mountain_echo`, `mountain_slow`, `mountain_flaky`, `mountain_hasher`, `mountain_pipeline`) report `STATUS: Up ... (healthy)`.
+
+#### Test Case 9.2: Automated Containerized Test Suite (TC-28)
+Run the dedicated end-to-end containerized test suite:
+```bash
+pytest tests/test_containerized.py -v
+```
+**Expected Output:**
+`10 passed in ~2.6s` validating:
+1. `test_middleware_timing_and_trace_headers`
+2. `test_middleware_prometheus_metrics`
+3. `test_middleware_jwt_auth_and_rbac`
+4. `test_middleware_redis_rate_limiting_in_container`
+5. `test_service_echo_and_rfc7230_sanitization`
+6. `test_service_slow_timeout_handling`
+7. `test_service_flaky_and_circuit_breaker`
+8. `test_service_hasher_streaming_chunks`
+9. `test_service_pipeline_ndjson_and_idempotency`
+10. `test_live_mongodb_route_storage_in_container`
+
+#### Test Case 9.3: Direct Live Redis Container Inspection (TC-29)
+Verify rate-limiting keys and ZSET scores directly inside the Redis container:
+```bash
+docker exec mountain_redis redis-cli keys "rl:*"
+```
+Inspect ZSET timestamps and TTL of an active rate-limited route:
+```bash
+docker exec mountain_redis redis-cli zrange "rl:rate-limited-route:ip:127.0.0.1" 0 -1 WITHSCORES
+docker exec mountain_redis redis-cli ttl "rl:rate-limited-route:ip:127.0.0.1"
+```
+**Expected Response:**
+Key exists, score timestamps match epoch times, and TTL is $> 0$ and $\le 120$s.
+
+#### Test Case 9.4: Direct Live MongoDB Container Inspection (TC-30)
+Verify route documents and indexes directly inside the MongoDB container:
+```bash
+docker exec mountain_mongodb mongosh gateway --eval "db.routes.getIndexes()"
+docker exec mountain_mongodb mongosh gateway --eval "db.routes.countDocuments()"
+docker exec mountain_mongodb mongosh gateway --eval "db.routes.find({}, {id: 1, path_pattern: 1, enabled: 1})"
+```
+**Expected Response:**
+- Indexes on `path_pattern_1` and `enabled_1` exist.
+- Documents are seeded and stored as expected.
+
+#### Test Case 9.5: Live Database Verification Suite (TC-31)
+Run the automated live database test suite verifying real reads, writes, and deletions:
+```bash
+pytest tests/test_live_databases.py -v
+```
+**Expected Output:**
+`4 passed` verifying direct database interaction without in-memory mocks.
+
+---
+
 ## 4. Automated Live Verification Helper
 
 An automated live test runner is included in the repository. It executes the critical paths of this playbook automatically:
@@ -635,6 +704,12 @@ Use this checklist during manual release testing:
   - [ ] Route enable/disable toggle works instantly
   - [ ] Route mutations persist across process restarts
   - [ ] Hot reload loads changes from disk without dropped connections
+- [ ] **Containerized & Database Verification (Docker Compose)**
+  - [ ] All 8 services report healthy status via `docker compose ps`
+  - [ ] `pytest tests/test_containerized.py` passes 10/10 tests
+  - [ ] Direct Redis inspection confirms key existence, ZSET cardinality, and TTL
+  - [ ] Direct MongoDB inspection confirms collection index creation and document persistence
+  - [ ] `./scripts/run_manual_tests.sh` passes all 15 verification steps
 
 ---
 

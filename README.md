@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-150%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-164%20passed-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checked](https://img.shields.io/badge/type%20checker-pyright-blue.svg)](https://github.com/microsoft/pyright)
@@ -538,7 +538,7 @@ mountain_api_gateway/
 │   └── models.py          # Pydantic schemas for backend services
 ├── config/
 │   └── routes.json        # Persistent seed route configuration
-├── tests/                 # 150 comprehensive pytest unit, integration & system tests
+├── tests/                 # 164 comprehensive pytest unit, integration, live-database & containerized tests
 ├── Dockerfile             # Multi-stage production container build (uv + python:3.12-slim)
 ├── docker-compose.yml     # Complete orchestration (Gateway, Redis, and 5 backends)
 ├── DECISIONS.md           # Deep architectural rationale and design decisions

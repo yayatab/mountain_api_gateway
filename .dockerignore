@@ -53,5 +53,4 @@ share/python-wheels/
 !.env.example
 
 # --- Documentation ---
-README.md
 docs/

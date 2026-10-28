@@ -25,8 +25,6 @@ class RouteRegistry:
 
         if storage is not None:
             self.storage: RouteStorage = storage
-        elif persistence_path is not None:
-            self.storage = FileRouteStorage(file_path=persistence_path)
         else:
             self.storage = create_route_storage(persistence_path=persistence_path)
 

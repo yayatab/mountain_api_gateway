@@ -92,6 +92,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         and hasattr(app.state.registry, "storage")
     ):
         await app.state.registry.storage.close()
+    if hasattr(app.state, "pipeline") and app.state.pipeline:
+        for mw in getattr(app.state.pipeline, "middlewares", []):
+            if hasattr(mw, "close"):
+                await mw.close()
     await client_pool.shutdown()
 
 
@@ -126,7 +130,7 @@ def create_app(
     if pipeline is None:
         metrics_mw = MetricsMiddleware()
         auth_mw = AuthMiddleware()
-        rl_mw = RateLimitMiddleware()
+        rl_mw = RateLimitMiddleware(redis_url=settings.redis_url)
         req_tr_mw = RequestTransformMiddleware()
         res_tr_mw = ResponseTransformMiddleware()
 

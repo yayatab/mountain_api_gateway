@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 
-DEFAULT_SECRET = os.getenv("GATEWAY_JWT_SECRET", "mountain-super-secret-key-change-in-production")
+DEFAULT_SECRET = os.getenv("GATEWAY_JWT_SECRET", "gateway-insecure-dev-secret-change-in-production")
 DEFAULT_ALGO = os.getenv("GATEWAY_JWT_ALGORITHM", "HS256")
 
 

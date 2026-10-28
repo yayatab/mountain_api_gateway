@@ -94,4 +94,9 @@ class FileRouteStorage(RouteStorage):
         data = [r.model_dump(mode="json") for r in routes.values()]
         tmp_path = self.file_path.with_name(f"{self.file_path.name}.tmp-{uuid.uuid4().hex[:8]}")
         tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        tmp_path.replace(self.file_path)
+        try:
+            tmp_path.replace(self.file_path)
+        except OSError:
+            # Handles bind-mounted single files in Docker (Errno 16 Device or resource busy)
+            self.file_path.write_text(tmp_path.read_text(encoding="utf-8"), encoding="utf-8")
+            tmp_path.unlink(missing_ok=True)

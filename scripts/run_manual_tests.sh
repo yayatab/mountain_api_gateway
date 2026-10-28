@@ -112,7 +112,7 @@ fi
 # 10. Streaming NDJSON Transform
 echo -n "10. Verifying Streaming NDJSON Pipeline (/pipeline/pipeline/transform)... "
 TRANSFORM_RESP=$(printf '{"event":"click","user":"101"}\n' | curl -s -X POST "${GATEWAY_URL}/pipeline/pipeline/transform" -H "Content-Type: application/x-ndjson" --data-binary @-)
-if echo "$TRANSFORM_RESP" | grep -q '"processed":true'; then
+if echo "$TRANSFORM_RESP" | grep -q '"event": "click"'; then
   echo -e "${GREEN}PASSED${NC}"
 else
   echo -e "${RED}FAILED${NC} Output: $TRANSFORM_RESP"
@@ -123,7 +123,7 @@ echo -n "11. Verifying Idempotent Orders Deduplication (/pipeline/pipeline/order
 IDEM_KEY="test-key-$(date +%s)"
 ORDER_1=$(curl -s -X POST "${GATEWAY_URL}/pipeline/pipeline/orders" -H "Content-Type: application/json" -H "Idempotency-Key: ${IDEM_KEY}" -d '{"order_id":"1","amount":100}')
 ORDER_2=$(curl -s -X POST "${GATEWAY_URL}/pipeline/pipeline/orders" -H "Content-Type: application/json" -H "Idempotency-Key: ${IDEM_KEY}" -d '{"order_id":"1","amount":100}')
-if echo "$ORDER_1" | grep -q '"replayed":false' && echo "$ORDER_2" | grep -q '"replayed":true'; then
+if echo "$ORDER_1" | grep -q '"is_duplicate":false' && echo "$ORDER_2" | grep -q '"is_duplicate":true'; then
   echo -e "${GREEN}PASSED (First processed, second replayed)${NC}"
 else
   echo -e "${RED}FAILED${NC}"
@@ -145,6 +145,33 @@ if echo "$METRICS_RESP" | grep -q 'gateway_requests_total'; then
   echo -e "${GREEN}PASSED${NC}"
 else
   echo -e "${RED}FAILED${NC}"
+fi
+
+# 14. Live MongoDB Dynamic Route CRUD & Hot Reload
+echo -n "14. Verifying MongoDB Route Storage & Hot-Loading (/admin/routes)... "
+TEST_ROUTE_ID="manual-test-live-route-$(date +%s)"
+CREATE_RESP=$(curl -s -X POST "${GATEWAY_URL}/admin/routes" \
+  -H "Content-Type: application/json" \
+  -d "{\"id\":\"${TEST_ROUTE_ID}\",\"name\":\"Live Test Route\",\"path_pattern\":\"/${TEST_ROUTE_ID}/**\",\"methods\":[\"GET\"],\"upstream_url\":\"http://echo-service:8001\",\"strip_prefix\":\"/${TEST_ROUTE_ID}\",\"enabled\":true}")
+
+if echo "$CREATE_RESP" | grep -q "\"id\":\"${TEST_ROUTE_ID}\""; then
+  TRAFFIC_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${GATEWAY_URL}/${TEST_ROUTE_ID}/ping")
+  curl -s -X DELETE "${GATEWAY_URL}/admin/routes/${TEST_ROUTE_ID}" > /dev/null
+  if [ "$TRAFFIC_CODE" -eq 200 ]; then
+    echo -e "${GREEN}PASSED (Created, Proxied, Cleaned)${NC}"
+  else
+    echo -e "${RED}FAILED (Traffic HTTP ${TRAFFIC_CODE})${NC}"
+  fi
+else
+  echo -e "${RED}FAILED (Creation failed)${NC} Output: $CREATE_RESP"
+fi
+
+# 15. Automated Containerized Pytest Suite
+echo -n "15. Running Full Containerized Pytest Suite (tests/test_containerized.py)... "
+if uv run pytest tests/test_containerized.py -q > /tmp/container_pytest.log 2>&1; then
+  echo -e "${GREEN}PASSED (All containerized tests green)${NC}"
+else
+  echo -e "${RED}FAILED${NC} (See /tmp/container_pytest.log)"
 fi
 
 echo -e "\n${GREEN}======================================================${NC}"

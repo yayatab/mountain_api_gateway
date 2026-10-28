@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import redis.asyncio as aioredis
 import yaml
 
 from gateway.discovery.load_balancer import LoadBalancer
@@ -30,6 +31,7 @@ from gateway.models.route import (
 )
 from gateway.proxy.engine import ProxyEngine
 from gateway.routing.registry import RouteRegistry
+from gateway.storage.base import RouteStorage
 from tests.system_test.backend_transport import SystemBackendTransport
 from tests.system_test.curl_parser import parse_curl_command
 from tests.system_test.models import ExpectedResponse, SystemTestScenario
@@ -256,11 +258,23 @@ class SystemTestRunner:
 
         return routes
 
-    async def run(self) -> None:
+    async def run(
+        self,
+        storage: RouteStorage | None = None,
+        redis_client: aioredis.Redis | None = None,
+    ) -> None:
         self._setup_services()
         routes = self._setup_routes()
 
-        registry = RouteRegistry(routes=routes)
+        if storage is not None:
+            await storage.initialize()
+            for r in routes:
+                await storage.save(r)
+            registry = RouteRegistry(storage=storage)
+            await registry.initialize()
+        else:
+            registry = RouteRegistry(routes=routes)
+
         load_balancer = LoadBalancer()
         proxy_engine = ProxyEngine(
             client=httpx.AsyncClient(transport=self.backend_transport),
@@ -268,7 +282,10 @@ class SystemTestRunner:
         )
 
         auth_mw = AuthMiddleware()
-        rl_mw = RateLimitMiddleware(memory_engine=InMemoryRateLimitEngine())
+        rl_mw = RateLimitMiddleware(
+            redis_client=redis_client,
+            memory_engine=InMemoryRateLimitEngine() if not redis_client else None,
+        )
         req_tr_mw = RequestTransformMiddleware()
         res_tr_mw = ResponseTransformMiddleware()
         metrics_mw = MetricsMiddleware()

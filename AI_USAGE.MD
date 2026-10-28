@@ -19,6 +19,8 @@
 10. Implementing a declarative, YAML-driven system test harness (`tests/test_system.py`, `tests/system_test/runner.py`) that parses curl commands, dynamically controls upstream service UP/DOWN states, loads route and middleware configurations, and executes end-to-end scenarios under pytest.
 11. Implementing dynamic per-route configurable middleware chains with alias normalization, strict duplicate prevention via Pydantic validators, runtime hot-loading via the Admin API, and atomic disk persistence.
 12. Architecting and implementing pluggable route storage engines (`RouteStorage` protocol with `FileRouteStorage` and `MongoRouteStorage`), automated collection seeding, MongoDB compound indexing, and zero-downtime hot-loading via the Admin API without interrupting proxy traffic.
+13. Designing automated live database tests (`tests/test_live_databases.py`) that connect to real Redis and MongoDB instances, execute gateway traffic and Admin API mutations, and directly inspect database keys, ZSET timestamps, TTLs, collections, and indexes to verify actual database usage.
+14. Implementing full containerized end-to-end integration tests (`tests/test_containerized.py`) verifying all 5 mock backend microservices, all middleware pipelines, and both live databases (Redis & MongoDB) running inside the Docker Compose network.
 
 ## What I Had to Fix
 ![img.png](img.png)
@@ -29,6 +31,7 @@ Using
 * some places were used the wrong container (list instead of set)
 * Adding (or telling the AI to add) more tests. and just happy-flow tests, also what-if tests such as 'unauthorized'
 * type systems (containers as none instead of empty containers)
+* be his guard and makking sure it follows the plan accordingly. 
 
 ## What AI Struggled With
 
@@ -38,3 +41,4 @@ Using
 - ASGI in-memory half-duplex deadlock when streaming request and response bodies concurrently over `httpx.ASGITransport` without pre-buffering chunk iterations.
 - Identifying correct fixture route paths across large integration test suites (e.g. distinguishing between `/admin/dashboard` application route and `/admin/routes` management API).
 - Initial validation error on seed `routes.json` due to case sensitivity mismatch between string `"HEALTHY"` and `HealthStatus` StrEnum values (`"healthy"`), caught and corrected during container route persistence verification.
+- realizing that the goal is to also deliver a docker-compose file and making sure everything runs with redis and mongo
