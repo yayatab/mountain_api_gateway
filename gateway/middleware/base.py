@@ -33,6 +33,10 @@ class MiddlewarePipeline:
         self._middlewares: list[BaseMiddleware] = middlewares or []
         self._named_middlewares: dict[str, BaseMiddleware] = named_middlewares or {}
 
+    @property
+    def middlewares(self) -> list[BaseMiddleware]:
+        return self._middlewares
+
     def register_named_middleware(self, name: str, middleware: BaseMiddleware) -> None:
         self._named_middlewares[name.lower()] = middleware
 

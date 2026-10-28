@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.12%20%7C%203.14-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-183%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-196%20tests-brightgreen.svg)]()
 [![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen.svg)]()
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checked](https://img.shields.io/badge/type%20checker-pyright-blue.svg)](https://github.com/microsoft/pyright)
@@ -22,8 +22,10 @@ flowchart TD
         Context["Context Initializer (X-Request-ID, IP, Timer)"]
         
         subgraph Pipeline ["Middleware Pipeline"]
+            Comp["Dynamic Compression (GZip / Deflate / Brotli)"]
             Auth["JWT Auth (RBAC & Scope Verification)"]
             RateLimit["Rate Limiter (Redis ZSET + In-Memory Fallback)"]
+            Cache["Distributed Cache (Redis + Memory Fallback)"]
             Transform["Header Sanitizer (RFC 7230 Hop-by-Hop Stripping)"]
         end
         
@@ -80,6 +82,8 @@ flowchart TD
 - **Pluggable Route Storage (MongoDB & File)**: Full async persistence using MongoDB (`motor` driver) with compound indexing and auto-seeding, or atomic JSON file persistence. Configure via `GATEWAY_STORAGE_BACKEND=mongodb`.
 - **Zero-Downtime Hot-Reload & Admin Mutations**: Runtime route mutations (`POST /admin/routes`, `PUT`, `DELETE`, `PATCH /status`) persist directly to the storage engine while immediately updating the routing table in memory without dropping in-flight requests.
 - **Configurable Middleware Chains per Route**: Routes can declare custom execution order (e.g. `["rate_limit", "auth"]`) or bypass specific stages, with strict duplicate prevention and canonical alias resolution.
+- **Distributed HTTP Response Caching**: Multi-tier response caching backed by Redis (with transparent in-memory fallback), deterministic SHA-256 key generation over path, sorted query parameters, and vary headers, HTTP `Cache-Control` (`max-age`, `no-cache`, `no-store`) compliance, safe `StreamingResponse` buffering up to `max_payload_bytes`, and `X-Cache: HIT|MISS|BYPASS` telemetry.
+- **Dynamic Response Compression**: On-the-fly content negotiation (`Accept-Encoding: gzip, deflate, br`), streaming chunk-by-chunk compression using standard library `zlib`, configurable payload size thresholds (`min_size_bytes`), MIME type filtering, and RFC-compliant `Vary: Accept-Encoding` management.
 - **Comprehensive Observability**: Prometheus metrics endpoint (`/metrics`), structured request correlation via `X-Request-ID`, and `Server-Timing` / `X-Response-Time` latency headers.
 
 ---

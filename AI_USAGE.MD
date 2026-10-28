@@ -24,6 +24,8 @@
 15. Designing and implementing a dual-mode structured logging architecture (`gateway/logging/`) featuring color-coded, aligned terminal formatting for humans and LLMs alongside Elastic Common Schema (ECS) NDJSON formatting with 1:1 Prometheus metric dimension correlation for Elasticsearch, Logstash, Vector, and Datadog.
 16. Generating comprehensive negative resilience and route status test coverage across all test harnesses (unit, integration, live database, YAML system tests, containerized suite, and manual verification scripts) validating that configured disabled routes consistently reject traffic with HTTP 404 (`route_not_found`) and upstream pools with all unhealthy instances fail fast with HTTP 503 (`service_unavailable`).
 17. Formulating backward-compatible model schema validators mapping assignment specification attributes (`path`, `target`, `middlewares`, `middleware_config`, `scopes`) to internal gateway domain models, implementing CORS header injection in response transforms, and auditing `DECISIONS.md` against official interview rubric templates.
+18. Implementing distributed response caching middleware with deterministic SHA-256 cache key calculation, sorted query parameters, HTTP Cache-Control header parsing (max-age, no-cache, no-store), safe StreamingResponse chunk buffering, and fail-open in-memory fallback.
+19. Implementing dynamic response compression middleware supporting GZip and Deflate (using stdlib zlib streaming compression) and Brotli, with HTTP content negotiation (Accept-Encoding), MIME type filtering, streaming threshold probe, and Vary: Accept-Encoding header management.
 
 ## What I Had to Fix
 ![img.png](img.png)
@@ -46,3 +48,6 @@ Using
 - Initial validation error on seed `routes.json` due to case sensitivity mismatch between string `"HEALTHY"` and `HealthStatus` StrEnum values (`"healthy"`), caught and corrected during container route persistence verification.
 - realizing that the goal is to also deliver a docker-compose file and making sure everything runs with redis and mongo
 - Case sensitivity differences between raw JSON booleans (`true`/`false`) and Python literals (`True`/`False`) when porting assignment PDF payloads directly into pytest fixtures.
+- Python standard library gzip module lacking a compressobj() interface for streaming chunk compression, requiring zlib.compressobj(level, zlib.DEFLATED, 16 + zlib.MAX_WBITS) with standard GZip header bitmask.
+- Middleware ordering interaction between response compression and response caching in a recursive chain-of-responsibility pipeline: Compression must wrap Cache so uncompressed canonical responses are cached upstream, allowing dynamic compression per individual client's Accept-Encoding without cache pollution.
+- HTTPX test client auto-decompression behavior when validating compressed response bodies, requiring direct middleware inspection or Content-Encoding header verification.

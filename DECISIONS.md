@@ -275,3 +275,42 @@ API Gateway observability serves two fundamentally different consumers:
   - Automatically checks `sys.stdout.isatty()` to disable ANSI escape codes when redirected to files or captured in CI pipes.
 - **Environment Toggle**:
   - Selected via `GATEWAY_LOG_FORMAT=console|json`. Default is `console` for local runs, and `json` for containerized and production deployments.
+
+---
+
+## 14. Distributed HTTP Response Caching & Dynamic Response Compression
+
+### 1. Dual-Layer Pipeline Positioning & Shared Canonical Cache
+In an asynchronous chain-of-responsibility middleware architecture, dynamic response compression must wrap response caching:
+$$\dots \longrightarrow \text{Compression} \longrightarrow \dots \longrightarrow \text{Cache} \longrightarrow \dots \longrightarrow \text{Proxy Engine}$$
+- **Forward Pass**: The client's request enters `CompressionMiddleware` (which passes it through transparently) and reaches `CacheMiddleware`.
+- **Return Pass**:
+  - `CacheMiddleware` captures and stores the **uncompressed canonical byte stream** returned from the upstream service.
+  - `CompressionMiddleware` inspects the specific client's `Accept-Encoding` header and compresses the response on-the-fly (`gzip`, `deflate`, or `br`).
+- **Architectural Advantage**: Multiple clients with differing encoding capabilities (e.g. one requesting `gzip`, another requesting `identity` or `br`) all share the same cached canonical upstream response without cache pollution or duplicate cache entries.
+
+### 2. Deterministic Cache Key Generation
+Cache keys are constructed deterministically to eliminate cache collision and ordering anomalies:
+$$\text{Key} = \text{prefix} : \text{route\_id} : \text{SHA256}(\text{METHOD} \mid \text{normalized\_path} \mid \text{sorted\_query} \mid \text{sorted\_vary\_headers})$$
+- Query parameter pairs are sorted lexicographically before URL-encoding.
+- Path slashes are normalized (`///api//v1///` $\to$ `/api/v1`).
+- Configured Vary headers (`CacheConfig.vary_headers`) are extracted case-insensitively, trimmed, sorted, and digested.
+
+### 3. Safe Streaming Response Buffering
+For `StreamingResponse` instances:
+- Upstream body chunks are buffered iteratively into memory during streaming pass-through up to `max_payload_bytes` (default 5 MB).
+- If the streaming response exceeds `max_payload_bytes`, the chunk accumulator is cleared immediately and caching is safely aborted while client delivery continues uninterrupted (preventing gateway Out-of-Memory failures).
+- On stream completion under `max_payload_bytes`, the full response body is serialized and cached.
+
+### 4. Distributed Resilience & Transparent Fail-Open Fallback
+- Primary cache storage utilizes distributed Redis keys with explicit TTLs (`SET key json EX ttl`).
+- All Redis operations are wrapped in bounded timeouts (300ms) with `try...except` blocks logging operational fallbacks as `WARNING`.
+- If Redis is unavailable or unconfigured, the middleware transparently falls back to a thread-safe, in-memory TTL dictionary (`_memory_cache`).
+- Any internal caching exception fails open, serving upstream traffic directly without dropping client requests.
+
+### 5. Dynamic Content Negotiation & Streaming Compression
+- Evaluates client `Accept-Encoding` against `preferred_algorithms` (`gzip`, `deflate`, `br`).
+- Respects `min_size_bytes` (default 1024 bytes) to avoid negative compression overhead on small responses.
+- Respects MIME type filtering (`compressible_types` such as `application/json`, `text/html`, `text/plain`).
+- Supports true streaming chunk compression using standard library `zlib.compressobj(level, zlib.DEFLATED, 16 + zlib.MAX_WBITS)` for GZip and `zlib.compressobj(level, zlib.DEFLATED, zlib.MAX_WBITS)` for Deflate.
+- Maintains HTTP caching fidelity by dynamically appending `Accept-Encoding` to the response `Vary` header.

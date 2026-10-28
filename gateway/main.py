@@ -15,6 +15,8 @@ from gateway.discovery.load_balancer import LoadBalancer, NoHealthyBackendExcept
 from gateway.logging.setup import setup_logging
 from gateway.middleware.auth import AuthMiddleware
 from gateway.middleware.base import MiddlewarePipeline
+from gateway.middleware.cache import CacheMiddleware
+from gateway.middleware.compression import CompressionMiddleware
 from gateway.middleware.metrics import MetricsMiddleware, render_metrics_endpoint
 from gateway.middleware.rate_limit import RateLimitMiddleware
 from gateway.middleware.request_transform import RequestTransformMiddleware
@@ -141,21 +143,27 @@ def create_app(
         metrics_mw = MetricsMiddleware()
         auth_mw = AuthMiddleware()
         rl_mw = RateLimitMiddleware(redis_url=settings.redis_url)
+        cache_mw = CacheMiddleware(redis_url=settings.redis_url)
         req_tr_mw = RequestTransformMiddleware()
         res_tr_mw = ResponseTransformMiddleware()
+        comp_mw = CompressionMiddleware()
 
         named_mw = {
             "auth": auth_mw,
             "rate_limit": rl_mw,
+            "cache": cache_mw,
             "request_transform": req_tr_mw,
             "response_transform": res_tr_mw,
+            "compression": comp_mw,
         }
 
         pipeline = MiddlewarePipeline(
             middlewares=[
                 metrics_mw,
+                comp_mw,
                 auth_mw,
                 rl_mw,
+                cache_mw,
                 req_tr_mw,
                 res_tr_mw,
             ],

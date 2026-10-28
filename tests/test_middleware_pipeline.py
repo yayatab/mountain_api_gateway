@@ -296,3 +296,83 @@ async def test_per_route_middleware_chain_execution_order_and_bypass():
 
     await client.aclose()
     await mock_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_full_pipeline_with_cache_and_compression() -> None:
+    from fastapi import FastAPI
+    from fastapi.responses import Response as StarletteResponse
+
+    backend_app = FastAPI()
+    upstream_hits = 0
+
+    large_body = (
+        b'{"status": "ok", "items": ["alpha", "beta", "gamma"], "extra": "' + b"x" * 600 + b'"}'
+    )
+
+    @backend_app.get("/catalog")
+    async def get_catalog():
+        nonlocal upstream_hits
+        upstream_hits += 1
+        return StarletteResponse(
+            content=large_body,
+            media_type="application/json",
+            headers={"Content-Length": str(len(large_body))},
+        )
+
+    backend_client = httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=backend_app),
+        base_url="http://catalog-service",
+    )
+
+    from gateway.models.route import CacheConfig, CompressionConfig
+
+    route = RouteDefinition(
+        id="catalog-route",
+        path_pattern="/catalog/**",
+        methods={HTTPMethod.GET},
+        upstream_url="http://catalog-service",
+        strip_prefix="/catalog",
+        middleware=MiddlewareConfig(
+            cache=CacheConfig(enabled=True, ttl_seconds=30),
+            compression=CompressionConfig(enabled=True, min_size_bytes=200),
+        ),
+    )
+
+    registry = RouteRegistry(routes=[route])
+    engine = ProxyEngine(client=backend_client)
+    app = create_app(registry=registry, proxy_engine=engine)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://gateway.test"
+    ) as client:
+        # Request 1: MISS, compressed with gzip
+        r1 = await client.get(
+            "/catalog/catalog",
+            headers={"Accept-Encoding": "gzip"},
+        )
+        assert r1.status_code == 200
+        assert r1.headers.get("X-Cache") == "MISS"
+        assert r1.headers.get("Content-Encoding") == "gzip"
+        assert upstream_hits == 1
+
+        # Request 2: HIT, served from cache, compressed with gzip
+        r2 = await client.get(
+            "/catalog/catalog",
+            headers={"Accept-Encoding": "gzip"},
+        )
+        assert r2.status_code == 200
+        assert r2.headers.get("X-Cache") == "HIT"
+        assert r2.headers.get("Content-Encoding") == "gzip"
+        # Upstream backend was not hit a second time
+        assert upstream_hits == 1
+
+        # Request 3: HIT, but client requests uncompressed (Accept-Encoding: identity)
+        r3 = await client.get(
+            "/catalog/catalog",
+            headers={"Accept-Encoding": "identity"},
+        )
+        assert r3.status_code == 200
+        assert r3.headers.get("X-Cache") == "HIT"
+        assert "Content-Encoding" not in r3.headers
+        assert upstream_hits == 1

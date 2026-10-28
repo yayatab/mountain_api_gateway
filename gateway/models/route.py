@@ -14,6 +14,8 @@ VALID_MIDDLEWARE_NAMES: set[str] = {
     "rate_limit",
     "request_transform",
     "response_transform",
+    "cache",
+    "compression",
 }
 
 MIDDLEWARE_ALIASES: dict[str, str] = {
@@ -23,6 +25,10 @@ MIDDLEWARE_ALIASES: dict[str, str] = {
     "rate_limiter": "rate_limit",
     "transform_request": "request_transform",
     "transform_response": "response_transform",
+    "caching": "cache",
+    "redis_cache": "cache",
+    "compress": "compression",
+    "gzip": "compression",
 }
 
 
@@ -92,10 +98,71 @@ class TransformConfig(BaseModel):
         return data
 
 
+class CacheConfig(BaseModel):
+    enabled: bool = False
+    ttl_seconds: int = 60
+    methods: set[str] = Field(default_factory=lambda: {"GET", "HEAD"})
+    status_codes: set[int] = Field(default_factory=lambda: {200, 203, 300, 301})
+    vary_headers: list[str] = Field(default_factory=lambda: ["Accept"])
+    max_payload_bytes: int = 2 * 1024 * 1024  # 2MB max cacheable response
+    key_prefix: str = "gw:cache"
+    respect_cache_control: bool = True  # Respect upstream 'no-store', 'no-cache', 'max-age'
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_cache_config(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            has_fields = (
+                "ttl_seconds" in data
+                or "methods" in data
+                or "status_codes" in data
+                or "vary_headers" in data
+                or "max_payload_bytes" in data
+            )
+            if "enabled" not in data and has_fields:
+                data["enabled"] = True
+        return data
+
+
+class CompressionConfig(BaseModel):
+    enabled: bool = False
+    min_size_bytes: int = 1024  # Don't compress payloads smaller than 1 KB
+    compress_level: int = 6  # Balance CPU vs ratio (1-9)
+    algorithms: list[str] = Field(default_factory=lambda: ["gzip", "deflate"])
+    mime_types: set[str] = Field(
+        default_factory=lambda: {
+            "application/json",
+            "application/javascript",
+            "application/xml",
+            "text/plain",
+            "text/html",
+            "text/css",
+            "text/xml",
+            "application/x-yaml",
+        }
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_compression_config(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            has_fields = (
+                "min_size_bytes" in data
+                or "compress_level" in data
+                or "algorithms" in data
+                or "mime_types" in data
+            )
+            if "enabled" not in data and has_fields:
+                data["enabled"] = True
+        return data
+
+
 class MiddlewareConfig(BaseModel):
     auth: AuthMiddlewareConfig = Field(default_factory=AuthMiddlewareConfig)
     rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
     transform: TransformConfig = Field(default_factory=TransformConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
+    compression: CompressionConfig = Field(default_factory=CompressionConfig)
 
 
 class RouteDefinition(BaseModel):
@@ -151,6 +218,18 @@ class RouteDefinition(BaseModel):
                         data["middleware"].setdefault("rate_limit", {})
                         if isinstance(data["middleware"]["rate_limit"], dict):
                             data["middleware"]["rate_limit"].setdefault("enabled", True)
+                if "cache" in mw_set or "caching" in mw_set:
+                    data.setdefault("middleware", {})
+                    if isinstance(data["middleware"], dict):
+                        data["middleware"].setdefault("cache", {})
+                        if isinstance(data["middleware"]["cache"], dict):
+                            data["middleware"]["cache"].setdefault("enabled", True)
+                if "compression" in mw_set or "compress" in mw_set:
+                    data.setdefault("middleware", {})
+                    if isinstance(data["middleware"], dict):
+                        data["middleware"].setdefault("compression", {})
+                        if isinstance(data["middleware"]["compression"], dict):
+                            data["middleware"]["compression"].setdefault("enabled", True)
         return data
 
     @field_validator("middleware_chain", mode="before")
